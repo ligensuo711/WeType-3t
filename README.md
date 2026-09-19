@@ -1,13 +1,13 @@
 <div align="center">
 
-# WeType Enhance
+# WeType-3t
 
 **微信输入法增强模块 · 外观、手势、剪贴板一次补齐**
 
 在运行时为微信输入法叠加自定义能力：界面外观、按键手势、剪贴板增强与系统防护；在小米系统上，还会为作用域内的三方输入法解锁全面屏键盘优化。
 
 <p align="center">
-  <a href="https://github.com/Costben/WeType-Enhance/releases"><img src="https://img.shields.io/github/v/release/Costben/WeType-Enhance?label=Release&amp;color=FB7299&amp;style=flat-square" alt="Release"></a>
+  <a href="https://github.com/xu-qian123/WeType-3t/releases"><img src="https://img.shields.io/github/v/release/xu-qian123/WeType-3t?label=Release&amp;color=FB7299&amp;style=flat-square" alt="Release"></a>
   <img src="https://img.shields.io/badge/Android-12%2B-3DDC84?style=flat-square&amp;logo=android&amp;logoColor=white" alt="Android 12+">
   <img src="https://img.shields.io/badge/LSPosed-API%20102-5C6BC0?style=flat-square" alt="LSPosed API 102">
   <img src="https://img.shields.io/badge/Stack-Jetpack%20Compose-4285F4?style=flat-square" alt="Jetpack Compose">
@@ -32,21 +32,25 @@
 
 | 分组 | 包含能力 |
 | :--- | :--- |
-| 界面美化 | 背景 / 按键 / 候选词的颜色、透明度、圆角、模糊与边缘高光 |
+| 界面美化 | 背景 / 按键 / 候选词 / 气泡的颜色、透明度、圆角、模糊与边缘高光 |
+| 主题与底栏 | 悬浮底栏、液态玻璃透镜折射、顶栏渐进模糊、底栏震动触觉反馈 |
 | 按键手势 | 全键盘与九宫格下滑手势、24 种动作绑定、触觉反馈与角标 |
 | 功能增强 | Logo / 字体替换、剪贴板增强、热更新防护 |
 | MIUI 附加 | 三方输入法全面屏优化解锁、小米短语校验解锁、剪贴板列表修复 |
 
-### 界面美化
+### 界面美化与主题质感
 
 - 浅色与深色模式各自保存一套配色，编辑时可实时查看渲染效果
 - 窗口背景颜色与不透明度自由调整
 - 按键颜色按映射分组批量替换，再单独微调透明度与圆角
 - 背景模糊强度、平滑圆角与边缘高光（支持关闭与强度调节）
+- 按键气泡不透明度独立精准调节，原生 RenderNode 硬件加速半透明渲染
 - 全局品牌强调色
 - 工具栏图标背景不透明度
 - 候选词背景透明度与圆角
 - 首个候选词左边距、候选栏拼音左边距
+- **悬浮底栏与液态玻璃**：Apple 风格悬浮底部导航，Backdrop 物理透镜折射、边缘色散与动态形变，支持切换触觉反馈
+- **顶栏渐进模糊**：基于 AGSL RuntimeShader 动态渲染的顶栏渐进过渡模糊，标题文字清晰防重叠，底沿平滑淡出消除硬切边
 
 ### 按键手势
 
@@ -81,7 +85,7 @@
 
 ### 下载
 
-- 本仓库 Releases：https://github.com/Costben/WeType-Enhance/releases
+- 本仓库 Releases：https://github.com/xu-qian123/WeType-3t/releases
 - Xposed 模块仓库：https://github.com/Xposed-Modules-Repo/com.xposed.wetypehook
 
 ### 使用要求
@@ -148,15 +152,14 @@
 
 </details>
 
-## 从源码构建
+<details>
+<summary>安装时提示「签名不一致 / 安装包冲突」？</summary>
 
-准备 JDK 21 与 Android SDK（compileSdk 37），然后执行：
+Android 系统的应用更新安全机制要求覆盖安装时签名密钥必须一致。
+- 如果此前安装过来自 GitHub Releases 的官方包或其他他人构建的安装包，自行编译签名的 APK 签名证书不同，系统将阻止直接覆盖安装。
+- 此时需先卸载手机上的旧版本后再安装新包（**强烈建议在卸载前进入模块「剪贴板增强」备份剪贴板历史数据**）。
 
-```bash
-./gradlew :app:assembleRelease
-```
-
-产物为 `app/build/outputs/apk/release/WeType_Enhance-<versionName>_release.apk`，未包含签名，安装前请自行签名。
+</details>
 
 ## 上游与致谢
 

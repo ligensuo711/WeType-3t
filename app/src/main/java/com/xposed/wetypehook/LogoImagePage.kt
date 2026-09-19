@@ -490,7 +490,8 @@ private fun renderPreviewBitmap(
     if (enabled) {
         val type = WeTypeSettings.normalizeLogoImageType(imageType)
         if (type == WeTypeSettings.LOGO_IMAGE_TYPE_SVG && svgText.isNotEmpty()) {
-            LogoImageRenderer.renderSvg(svgText, PREVIEW_BITMAP_EDGE)?.let { bitmap ->
+            // 按槽位栅格化（默认 LOGO_SLOT_PX），与 hook 侧同一份裁切数学，所见即所得。
+            LogoImageRenderer.renderSvg(svgText)?.let { bitmap ->
                 val tint = if (recolor) previewAccent(snapshot, isNight) else null
                 return LogoImageRenderer.tintSrcIn(bitmap, tint)
             }

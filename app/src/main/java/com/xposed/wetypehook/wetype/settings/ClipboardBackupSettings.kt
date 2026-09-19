@@ -15,7 +15,7 @@ data class ClipboardBackupSettings(
     val preExportDownload: Boolean = false
 ) {
     companion object {
-        const val DEFAULT_REMOTE_DIR = "WeTypeEnhance"
+        const val DEFAULT_REMOTE_DIR = "WeType-3t"
         const val DEFAULT_KEEP_COUNT = 5
         const val KEEP_COUNT_UNLIMITED = 0
         const val KEEP_COUNT_MIN = 1

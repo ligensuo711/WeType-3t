@@ -23,6 +23,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import com.xposed.wetypehook.wetype.hook.WeTypeClipboardHooks
 import com.xposed.wetypehook.wetype.hook.WeTypeGestureHooks
+import com.xposed.wetypehook.wetype.hook.WeTypeImeRestart
 import com.xposed.wetypehook.wetype.hook.WeTypeKeyLabelHooks
 import com.xposed.wetypehook.wetype.hook.WeTypeResourceHooks
 import com.xposed.wetypehook.wetype.hook.WeTypeUpdateHooks
@@ -306,11 +307,12 @@ class MainHook : XposedModule() {
         }
 
         HookEnvironment.withHookScope("wetype.activation") { hookActivationHeartbeat(sourcePackage) }
+        HookEnvironment.withHookScope("wetype.ime-restart") { WeTypeImeRestart.install() }
         HookEnvironment.withHookScope("wetype.font") { hookWeTypeFont() }
         HookEnvironment.withHookScope("wetype.colors") { hookWeTypeTransparentColors() }
         HookEnvironment.withHookScope("wetype.overlay-underlay") { WeTypeWindowHooks.hookTransparentOverlayUnderlay() }
         HookEnvironment.withHookScope("wetype.self-draw-colors") { hookWeTypeSelfDrawKeyColors() }
-        HookEnvironment.withHookScope("wetype.key-corner") { hookWeTypeKeyboardKeyCorner() }
+        HookEnvironment.withHookScope("wetype.key-corner") { hookWeTypeKeyboardKeyCorner(sourceDir, classLoader) }
         HookEnvironment.withHookScope("wetype.candidate-text") { hookWeTypeCandidateSpecialTextColor() }
         HookEnvironment.withHookScope("wetype.candidate-alpha") { hookWeTypeCandidateBackgroundAlpha() }
         HookEnvironment.withHookScope("wetype.candidate-margin") { hookWeTypeCandidateBackgroundLeftMargin() }
@@ -683,8 +685,9 @@ class MainHook : XposedModule() {
         WeTypeResourceHooks.hookSelfDrawKeyColors()
     }
 
-    private fun hookWeTypeKeyboardKeyCorner() {
+    private fun hookWeTypeKeyboardKeyCorner(sourceDir: String?, classLoader: ClassLoader) {
         WeTypeResourceHooks.hookKeyboardKeyCorner()
+        WeTypeResourceHooks.hookBubbleCorner(sourceDir, classLoader)
     }
 
     private fun hookWeTypeCandidateSpecialTextColor() {

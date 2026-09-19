@@ -49,8 +49,8 @@ internal object ClipboardBackupArchive {
     const val IMAGES_DIR = "images/"
     const val MIME_ZIP = "application/zip"
 
-    private const val GENERATOR = "WeType-Enhance"
-    private const val FILE_NAME_PREFIX = "WeTypeEnhance-clipboard-"
+    private const val GENERATOR = "WeType-3t"
+    private const val FILE_NAME_PREFIX = "WeType-3t-clipboard-"
     private const val FILE_NAME_SUFFIX = ".zip"
 
     private val FILE_NAME_TIME = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")

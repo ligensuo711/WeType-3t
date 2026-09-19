@@ -37,6 +37,7 @@ import java.lang.reflect.Modifier
 import java.util.Collections
 import java.util.WeakHashMap
 import kotlin.math.roundToInt
+import org.luckypray.dexkit.DexKitBridge
 
 internal object WeTypeResourceHooks {
     private const val WETYPE_RESOURCE_PACKAGE = "com.tencent.wetype"
@@ -45,8 +46,14 @@ internal object WeTypeResourceHooks {
     private const val WETYPE_ID_R_CLASS = "com.tencent.wetype.plugin.hld.s"
     private const val KEY_DATA_CLASS =
         "com.tencent.wetype.plugin.hld.keyboard.selfdraw.bean.KeyData"
+    private const val FLOATVIEW_PACKAGE =
+        "com.tencent.wetype.plugin.hld.floatview"
+    private const val FLOATVIEW_CORNER_STRING = "cornerRadiusSmall"
     // KeyData.bgCorner renders ~10dp smaller than its numeric value; offset the stored dp radius.
     private const val KEY_CORNER_BGCORNER_OFFSET = 10
+    // Host default KeyData.bgCorner design units. FloatViewDimenConfig.d (cornerRadiusSmall in px)
+    // is calculated based on this baseline, so bubble bottom corner scales proportionally.
+    private const val OFFICIAL_DEFAULT_BG_CORNER = 16f
 
     // Faint hairline alpha applied to the host key border color (mirrors the legacy flat look).
     private const val KEY_BORDER_ALPHA = 0x20
@@ -547,6 +554,148 @@ internal object WeTypeResourceHooks {
             Log.i("Success: Hook WeType keyboard key corner")
         }.onFailure {
             Log.i("Failed: Hook WeType keyboard key corner")
+            Log.i(it)
+        }
+    }
+
+    /**
+     * 按下气泡圆角（移植自 WeType-Tool）：宿主 floatview 包内引用字符串
+     * `cornerRadiusSmall` 的方法所属类即气泡配置类；取其参数不少于 4 个的
+     * 构造器，hookAfter 把实例的 float 字段 `d` 绑定按键圆角设置值。
+     * 由于宿主气泡字段 `d` 为屏幕物理像素 px，且官方默认构造时按 KeyData.bgCorner=16 的基线计算，
+     * 此处按 (configured + KEY_CORNER_BGCORNER_OFFSET) / OFFICIAL_DEFAULT_BG_CORNER 等比换算，
+     * 确保无论按键圆角如何调整，气泡底部弧度均与按键圆角严格吻合。
+     * 原值按实例保存在 WeakHashMap，设置值为负时恢复原值。
+     */
+    private val bubbleCornerOriginals =
+        Collections.synchronizedMap(WeakHashMap<Any, MutableMap<String, Float>>())
+    private val bubbleCornerFields = listOf("d")
+
+    fun hookBubbleCorner(sourceDir: String?, classLoader: ClassLoader) {
+        if (sourceDir.isNullOrEmpty()) {
+            Log.e("Failed: Cannot install bubble corner hook without sourceDir")
+            return
+        }
+        runCatching {
+            System.loadLibrary("dexkit")
+            DexKitBridge.create(sourceDir).use { bridge ->
+                val targetClassName = bridge.findMethod {
+                    searchPackages(FLOATVIEW_PACKAGE)
+                    matcher { usingStrings(FLOATVIEW_CORNER_STRING) }
+                }.firstOrNull()?.className
+                    ?: error("bubble corner class not found ($FLOATVIEW_CORNER_STRING)")
+                val targetClass = Class.forName(targetClassName, false, classLoader)
+                Log.i("[BubbleCorner] target=$targetClassName")
+                val constructor = targetClass.declaredConstructors
+                    .firstOrNull { it.parameterCount >= 4 }
+                    ?: error("bubble corner ctor not found in $targetClassName")
+                val cornerFields = bubbleCornerFields.mapNotNull { name ->
+                    runCatching {
+                        targetClass.getDeclaredField(name).apply {
+                            isAccessible = true
+                            check(type == Float::class.javaPrimitiveType) {
+                                "field $name is not float"
+                            }
+                        }
+                    }.onFailure {
+                        Log.e("[BubbleCorner] corner field $name unavailable: $it")
+                    }.getOrNull()
+                }
+                if (cornerFields.isEmpty()) error("no corner float fields in $targetClassName")
+                constructor.hookAfter { param ->
+                    val instance = param.thisObject ?: return@hookAfter
+                    val configured = WeTypeSettings.getKeyCornerRadiusXposed()
+                    val originals = synchronized(bubbleCornerOriginals) {
+                        bubbleCornerOriginals.getOrPut(instance) { mutableMapOf() }
+                    }
+                    cornerFields.forEach { field ->
+                        val original = runCatching { field.getFloat(instance) }.getOrNull()
+                            ?: return@forEach
+                        synchronized(bubbleCornerOriginals) {
+                            if (!originals.containsKey(field.name)) {
+                                originals[field.name] = original
+                            }
+                        }
+                        val orig = synchronized(bubbleCornerOriginals) {
+                            originals[field.name]
+                        } ?: original
+                        if (configured >= 0) {
+                            val scale = (configured + KEY_CORNER_BGCORNER_OFFSET).toFloat() / OFFICIAL_DEFAULT_BG_CORNER
+                            val targetRadius = (orig * scale).coerceAtLeast(0f)
+                            field.setFloat(instance, targetRadius)
+                        } else {
+                            field.setFloat(instance, orig)
+                        }
+                    }
+                }
+                // 气泡不透明度：定位气泡主视图容器（继承自 FrameLayout），
+                // 在气泡挂载及绘制时设置 view.alpha，原生硬件加速自动呈现半透明/透明效果。
+                runCatching {
+                    val floatViewClassName = bridge.findMethod {
+                        searchPackages(FLOATVIEW_PACKAGE)
+                        matcher {
+                            name = "getDimenConfig"
+                            returnType = targetClassName
+                        }
+                    }.firstOrNull()?.className
+                    if (floatViewClassName != null) {
+                        val floatViewClass = Class.forName(floatViewClassName, false, classLoader)
+                        runCatching {
+                            val onAttachedMethod = floatViewClass.findMethodInHierarchy {
+                                name == "onAttachedToWindow" && parameterTypes.isEmpty()
+                            }
+                            onAttachedMethod.hookAfter { param ->
+                                val view = param.thisObject as? View ?: return@hookAfter
+                                val alphaInt = WeTypeSettings.getBubbleAlphaXposed().coerceIn(0, 255)
+                                view.alpha = alphaInt / 255f
+                            }
+                            Log.i("[BubbleAlpha] onAttachedToWindow hooked")
+                        }.onFailure {
+                            Log.e("[BubbleAlpha] onAttachedToWindow hook failed: $it")
+                        }
+
+                        runCatching {
+                            val onDrawMethod = floatViewClass.findMethodInHierarchy {
+                                name == "onDraw" && parameterTypes.size == 1 && parameterTypes[0] == Canvas::class.java
+                            }
+                            onDrawMethod.hookBefore { param ->
+                                val view = param.thisObject as? View ?: return@hookBefore
+                                val alphaInt = WeTypeSettings.getBubbleAlphaXposed().coerceIn(0, 255)
+                                val targetAlpha = alphaInt / 255f
+                                if (view.alpha != targetAlpha) {
+                                    view.alpha = targetAlpha
+                                }
+                            }
+                            Log.i("[BubbleAlpha] onDraw hooked")
+                        }.onFailure {
+                            Log.e("[BubbleAlpha] onDraw hook failed: $it")
+                        }
+
+                        runCatching {
+                            val vMethod = floatViewClass.findMethodInHierarchy {
+                                name == "v" && parameterCount >= 4
+                            }
+                            vMethod.hookAfter { param ->
+                                val view = param.thisObject as? View ?: return@hookAfter
+                                val alphaInt = WeTypeSettings.getBubbleAlphaXposed().coerceIn(0, 255)
+                                view.alpha = alphaInt / 255f
+                            }
+                            Log.i("[BubbleAlpha] v hooked")
+                        }.onFailure {
+                            Log.e("[BubbleAlpha] v hook failed: $it")
+                        }
+
+                        Log.i("[BubbleAlpha] target=$floatViewClassName")
+                    } else {
+                        Log.e("[BubbleAlpha] floatViewClass not found")
+                    }
+                }.onFailure {
+                    Log.e("[BubbleAlpha] hook install failed: $it")
+                }
+            }
+            Log.i("Success: Hook WeType bubble corner")
+        }.onFailure {
+            Log.i("Failed: Hook WeType bubble corner")
             Log.i(it)
         }
     }

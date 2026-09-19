@@ -15,5 +15,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "WeType Enhance"
+rootProject.name = "WeType-3t"
 include(":app")

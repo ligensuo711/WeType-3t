@@ -49,6 +49,7 @@ internal object WeTypeClipboardImageHost {
     private const val PANEL_IMAGE_PREVIEW = "ImagePreview"
     private const val PANEL_CLIPBOARD = "CustomPhraseAndClipboard"
     private const val CLIPBOARD_TAB_INDEX = 0
+    private const val QUICK_PHRASE_TAB_INDEX = 1
 
     @Volatile
     private var installed = false
@@ -349,20 +350,26 @@ internal object WeTypeClipboardImageHost {
     }
 
     /** 用宿主原生导航切回剪贴板面板（与搜索提交 `N.p3/n3(CustomPhraseAndClipboard, …)` 同契约）。 */
-    fun openClipboardPanel(): Boolean {
+    fun openClipboardPanel(): Boolean = openPanelByTab(CLIPBOARD_TAB_INDEX)
+
+    /** 用宿主原生导航切到常用语面板（同一 CustomPhraseAndClipboard 面板，tab=1）。 */
+    fun openCustomPhrasePanel(): Boolean = openPanelByTab(QUICK_PHRASE_TAB_INDEX)
+
+    /** 经 `N.n3/p3/k3(面板枚举, Bundle{target_tab_index})` 切到指定 tab，tab 越界时宿主侧忽略。 */
+    fun openPanelByTab(tabIndex: Int): Boolean {
         return try {
             ensureRuntime()
             val manager = navManager ?: return false
             val method = navMethod ?: return false
             val panel = navClipboardPanel ?: return false
             val bundle = Bundle().apply {
-                putInt(KEY_TARGET_TAB_INDEX, CLIPBOARD_TAB_INDEX)
+                putInt(KEY_TARGET_TAB_INDEX, tabIndex)
                 putInt(KEY_FROM, 1)
             }
             method.invoke(manager, panel, bundle)
             true
         } catch (t: Throwable) {
-            AndroidLog.e(TAG, "open clipboard panel failed: ${t.message}")
+            AndroidLog.e(TAG, "open panel tab=$tabIndex failed: ${t.message}")
             false
         }
     }

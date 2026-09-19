@@ -1,27 +1,37 @@
 package com.xposed.wetypehook
 
 import android.app.Activity
-import android.content.ComponentName
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -49,10 +59,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -104,6 +113,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.core.view.ViewCompat
 import com.kyant.capsule.ContinuousRoundedRectangle
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.vibrancy
 import com.xposed.wetypehook.wetype.gesture.GestureAction
 import com.xposed.wetypehook.wetype.graphics.WeTypeBloomStrokeDrawable
 import com.xposed.wetypehook.wetype.graphics.WeTypeCornerRadii
@@ -121,6 +134,7 @@ import com.xposed.wetypehook.wetype.settings.WeTypeSettings
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardColors
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.DropdownArrowEndAction
 import top.yukonga.miuix.kmp.basic.DropdownDefaults
@@ -130,9 +144,7 @@ import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Slider
-import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
@@ -143,8 +155,12 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.popup.OverlayDropdownPopup
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
-import top.yukonga.miuix.kmp.icon.extended.Info
+import top.yukonga.miuix.kmp.icon.extended.All
+import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Ok
+import top.yukonga.miuix.kmp.icon.extended.Settings
+import top.yukonga.miuix.kmp.icon.extended.Theme
+import top.yukonga.miuix.kmp.icon.extended.Tune
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.lightColorScheme
@@ -156,276 +172,15 @@ import kotlin.math.roundToInt
 const val EXTRA_OPEN_WETYPE_EMBEDDED_SETTINGS = "com.xposed.wetypehook.extra.OPEN_WETYPE_EMBEDDED_SETTINGS"
 const val EXTRA_OPEN_WETYPE_BACKUP_PAGE = "com.xposed.wetypehook.extra.OPEN_WETYPE_BACKUP_PAGE"
 const val EXTRA_OPEN_WETYPE_LOGO_IMAGE_PAGE = "com.xposed.wetypehook.extra.OPEN_WETYPE_LOGO_IMAGE_PAGE"
-private const val ACTIVATION_HEARTBEAT_WINDOW_MS = 4_000L
-private const val ACTIVATION_KEYBOARD_RETRY_COUNT = 3
-private const val ACTIVATION_KEYBOARD_RETRY_DELAY_MS = 450L
-
-private fun ModuleActivationTracker.ActivationStatus.hasFreshHeartbeat(
-    now: Long = System.currentTimeMillis()
-): Boolean {
-    if (!isActive || lastActivatedAt <= 0L) return false
-    return now - lastActivatedAt <= ACTIVATION_HEARTBEAT_WINDOW_MS
-}
 
 class MainActivity : ComponentActivity() {
-    private var hasAttemptedEmbeddedLaunch = false
-    private var activationStatusListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
-    private var activationStatus by mutableStateOf(
-        ModuleActivationTracker.ActivationStatus(
-            isActive = false,
-            sourcePackage = null,
-            sourceProcess = null,
-            lastActivatedAt = 0L
-        )
-    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        activationStatus = ModuleActivationTracker.resolveStatusForUi(this)
-        activationStatusListener = ModuleActivationTracker.registerStatusListener(this) { status ->
-            activationStatus = status
-            if (!status.hasFreshHeartbeat()) return@registerStatusListener
-            runOnUiThread {
-                launchEmbeddedSettingsAndFinish()
-            }
-        }
         setContent {
-            ActivationEntryApp(
-                isActive = activationStatus.hasFreshHeartbeat(),
-                onOpenEmbeddedSettings = ::launchEmbeddedSettingsAndFinish
-            )
+            WeTypeSettingsApp(settingsContext = this)
         }
-        launchEmbeddedSettingsIfActive()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        activationStatus = ModuleActivationTracker.resolveStatusForUi(this)
-        launchEmbeddedSettingsIfActive()
-    }
-
-    override fun onDestroy() {
-        activationStatusListener?.let {
-            ModuleActivationTracker.unregisterStatusListener(this, it)
-            activationStatusListener = null
-        }
-        super.onDestroy()
-    }
-
-    private fun launchEmbeddedSettingsIfActive(): Boolean {
-        if (!hasAttemptedEmbeddedLaunch && activationStatus.hasFreshHeartbeat()) {
-            return launchEmbeddedSettingsAndFinish()
-        }
-        return false
-    }
-
-    private fun launchEmbeddedSettingsAndFinish(): Boolean {
-        if (hasAttemptedEmbeddedLaunch) return false
-        hasAttemptedEmbeddedLaunch = true
-        val launched = openEmbeddedWeTypeSettings()
-        if (launched) {
-            finish()
-        } else {
-            hasAttemptedEmbeddedLaunch = false
-        }
-        return launched
-    }
-
-    private fun openEmbeddedWeTypeSettings(): Boolean {
-        val bridgePendingIntent = runCatching {
-            ModuleBridgeContract.createSettingsBridgePendingIntent(this)
-        }.getOrNull()
-        val launchIntents = listOfNotNull(
-            packageManager.getLaunchIntentForPackage("com.tencent.wetype")?.apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                putExtra(EXTRA_OPEN_WETYPE_EMBEDDED_SETTINGS, true)
-                bridgePendingIntent?.let {
-                    putExtra(ModuleBridgeContract.EXTRA_BRIDGE_PENDING_INTENT, it)
-                }
-            },
-            Intent(Intent.ACTION_MAIN).apply {
-                setPackage("com.tencent.wetype")
-                addCategory(Intent.CATEGORY_LAUNCHER)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                putExtra(EXTRA_OPEN_WETYPE_EMBEDDED_SETTINGS, true)
-                bridgePendingIntent?.let {
-                    putExtra(ModuleBridgeContract.EXTRA_BRIDGE_PENDING_INTENT, it)
-                }
-            },
-            Intent().apply {
-                component = ComponentName(
-                    "com.tencent.wetype",
-                    "com.tencent.wetype.plugin.hld.ui.ImeAboutActivity"
-                )
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                putExtra(EXTRA_OPEN_WETYPE_EMBEDDED_SETTINGS, true)
-                bridgePendingIntent?.let {
-                    putExtra(ModuleBridgeContract.EXTRA_BRIDGE_PENDING_INTENT, it)
-                }
-            }
-        )
-
-        for (intent in launchIntents) {
-            val launched = runCatching {
-                startActivity(intent)
-                true
-            }.getOrElse { false }
-            if (launched) return true
-        }
-
-        Toast.makeText(this, "Failed to open WeType", Toast.LENGTH_SHORT).show()
-        return false
-    }
-}
-
-@Composable
-private fun ActivationEntryApp(
-    isActive: Boolean,
-    onOpenEmbeddedSettings: () -> Unit
-) {
-    val darkMode = isSystemInDarkTheme()
-    MiuixTheme(colors = if (darkMode) darkColorScheme() else lightColorScheme()) {
-        SyncSystemBars(darkMode = darkMode)
-        ActivationEntryScreen(
-            isActive = isActive,
-            onOpenEmbeddedSettings = onOpenEmbeddedSettings
-        )
-    }
-}
-
-@Composable
-private fun ActivationEntryScreen(
-    isActive: Boolean,
-    onOpenEmbeddedSettings: () -> Unit
-) {
-    var probeText by rememberSaveable { mutableStateOf("") }
-    var isCheckingHeartbeat by rememberSaveable { mutableStateOf(!isActive) }
-    val focusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
-
-    LaunchedEffect(isActive) {
-        if (isActive) {
-            isCheckingHeartbeat = false
-            return@LaunchedEffect
-        }
-
-        isCheckingHeartbeat = true
-        repeat(ACTIVATION_KEYBOARD_RETRY_COUNT) {
-            delay(ACTIVATION_KEYBOARD_RETRY_DELAY_MS)
-            focusRequester.requestFocus()
-            keyboardController?.show()
-        }
-        isCheckingHeartbeat = false
-    }
-
-    val backgroundColor = if (isSystemInDarkTheme()) {
-        ComposeColor.Black
-    } else {
-        ComposeColor(0xFFF7F7F7)
-    }
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(backgroundColor)
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .imePadding()
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            insideMargin = PaddingValues(0.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(
-                    imageVector = MiuixIcons.Info,
-                    contentDescription = null,
-                    tint = MiuixTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .width(72.dp)
-                        .height(72.dp)
-                )
-                Spacer(modifier = Modifier.height(18.dp))
-                Text(
-                    text = stringResource(
-                        if (isActive) {
-                            R.string.activation_active_title
-                        } else {
-                            R.string.activation_required_title
-                        }
-                    ),
-                    style = MiuixTheme.textStyles.headline1,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = stringResource(
-                        if (isActive) {
-                            R.string.activation_active_summary
-                        } else {
-                            R.string.activation_required_summary
-                        }
-                    ),
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    style = MiuixTheme.textStyles.main,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            insideMargin = PaddingValues(0.dp)
-        ) {
-            if (isActive) {
-                BasicComponent(
-                    title = stringResource(R.string.activation_open_embedded_settings),
-                    titleColor = BasicComponentDefaults.titleColor(
-                        color = MiuixTheme.colorScheme.primary
-                    ),
-                    onClick = onOpenEmbeddedSettings
-                )
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 20.dp)
-                ) {
-                    Text(
-                        text = stringResource(
-                            if (isCheckingHeartbeat) {
-                                R.string.activation_detecting_summary
-                            } else {
-                                R.string.activation_probe_summary
-                            }
-                        ),
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        style = MiuixTheme.textStyles.body2
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    TextField(
-                        value = probeText,
-                        onValueChange = { probeText = it },
-                        label = stringResource(R.string.activation_probe_label),
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(focusRequester)
-                    )
-                }
-            }
-        }
-
-
     }
 }
 
@@ -433,11 +188,25 @@ private fun ActivationEntryScreen(
 internal fun WeTypeSettingsApp(
     settingsContext: Context
 ) {
-    val darkMode = isSystemInDarkTheme()
+    var themeMode by remember(settingsContext) {
+        mutableStateOf(WeTypeSettings.getAppThemeMode(settingsContext))
+    }
+    val systemDarkMode = isSystemInDarkTheme()
+    val darkMode = when (themeMode) {
+        WeTypeSettings.APP_THEME_MODE_LIGHT -> false
+        WeTypeSettings.APP_THEME_MODE_DARK -> true
+        else -> systemDarkMode
+    }
     MiuixTheme(colors = if (darkMode) darkColorScheme() else lightColorScheme()) {
         SyncSystemBars(darkMode = darkMode)
         WeTypeSettingsScreen(
-            settingsContext = settingsContext
+            settingsContext = settingsContext,
+            darkMode = darkMode,
+            themeMode = themeMode,
+            onThemeModeChange = {
+                themeMode = it
+                WeTypeSettings.setAppThemeMode(settingsContext, it)
+            }
         )
     }
 }
@@ -455,9 +224,9 @@ internal fun SyncSystemBars(darkMode: Boolean) {
         val window = view.context.findHostActivity()?.window
             ?.takeIf { it.decorView === view.rootView }
             ?: return@SideEffect
-        val systemBarColor = if (darkMode) Color.BLACK else Color.parseColor("#F7F7F7")
-        window.statusBarColor = systemBarColor
-        window.navigationBarColor = systemBarColor
+        // 顶栏玻璃延伸到状态栏底下，系统栏透明；图标深浅仍跟随主题。
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
     }
 }
 
@@ -469,7 +238,10 @@ private tailrec fun Context.findHostActivity(): Activity? = when (this) {
 
 @Composable
 private fun WeTypeSettingsScreen(
-    settingsContext: Context
+    settingsContext: Context,
+    darkMode: Boolean,
+    themeMode: Int,
+    onThemeModeChange: (Int) -> Unit
 ) {
     val context = LocalContext.current
     val preferencesContext = remember(settingsContext) { settingsContext }
@@ -491,6 +263,7 @@ private fun WeTypeSettingsScreen(
     var blurRadius by rememberSaveable { mutableIntStateOf(snapshot.blurRadius) }
     var cornerRadius by rememberSaveable { mutableIntStateOf(snapshot.cornerRadius) }
     var keyCornerRadius by rememberSaveable { mutableIntStateOf(snapshot.keyCornerRadius) }
+    var bubbleAlpha by rememberSaveable { mutableIntStateOf(snapshot.bubbleAlpha) }
     var edgeHighlightEnabled by rememberSaveable { mutableStateOf(snapshot.edgeHighlightEnabled) }
     var edgeHighlightIntensity by rememberSaveable { mutableIntStateOf(snapshot.edgeHighlightIntensity) }
     var candidateBackgroundAlpha by rememberSaveable {
@@ -677,9 +450,23 @@ private fun WeTypeSettingsScreen(
         )
     }
     var currentModeIsDark by rememberSaveable { mutableStateOf(systemDarkMode) }
-    val categoryTabs = remember { listOf("界面美化", "按键手势", "功能增强") }
-    val categoryPagerState = rememberPagerState(pageCount = { categoryTabs.size })
-    val coroutineScope = rememberCoroutineScope()
+    var bottomTab by rememberSaveable { mutableIntStateOf(0) }
+    var detailRoute by rememberSaveable { mutableStateOf<String?>(null) }
+    var liquidGlass by remember(preferencesContext) {
+        mutableStateOf(WeTypeSettings.isLiquidGlassBottomBar(preferencesContext))
+    }
+    var blurEnabled by remember(preferencesContext) {
+        mutableStateOf(WeTypeSettings.isAppBlurEnabled(preferencesContext))
+    }
+    var floatingBar by remember(preferencesContext) {
+        mutableStateOf(WeTypeSettings.isAppFloatingBar(preferencesContext))
+    }
+    var bottomBarHaptic by remember(preferencesContext) {
+        mutableStateOf(WeTypeSettings.isBottomBarHaptic(preferencesContext))
+    }
+    var topBarProgressiveBlur by remember(preferencesContext) {
+        mutableStateOf(WeTypeSettings.isTopBarProgressiveBlur(preferencesContext))
+    }
     var colorInput by rememberSaveable {
         mutableStateOf(formatRgb(if (currentModeIsDark) darkColor else lightColor))
     }
@@ -720,7 +507,8 @@ private fun WeTypeSettingsScreen(
 
     fun saveSettings(
         successMessage: Int = R.string.settings_saved,
-        glassOverridesToSave: GlassMaterialOverrides? = parsedGlassOverrides
+        glassOverridesToSave: GlassMaterialOverrides? = parsedGlassOverrides,
+        quietOnSuccess: Boolean = false
     ): Boolean {
         if (glassOverridesToSave == null) {
             Toast.makeText(context, R.string.settings_glass_invalid, Toast.LENGTH_SHORT).show()
@@ -733,6 +521,7 @@ private fun WeTypeSettingsScreen(
             blurRadius = blurRadius,
             cornerRadius = cornerRadius,
             keyCornerRadius = keyCornerRadius,
+            bubbleAlpha = bubbleAlpha,
             edgeHighlightEnabled = edgeHighlightEnabled,
             edgeHighlightIntensity = edgeHighlightIntensity,
             candidateBackgroundAlpha = candidateBackgroundAlpha,
@@ -784,11 +573,14 @@ private fun WeTypeSettingsScreen(
             hyperMaterialEnabled = hyperMaterialEnabled,
             glassOverrides = glassOverridesToSave,
             onPersisted = { saved ->
-                Toast.makeText(
-                    context,
-                    if (saved) successMessage else R.string.settings_save_failed,
-                    Toast.LENGTH_SHORT
-                ).show()
+                // 保存按钮走自动重启，成功时只留重启结果那句 Toast，这里不再重复提示。
+                if (!saved || !quietOnSuccess) {
+                    Toast.makeText(
+                        context,
+                        if (saved) successMessage else R.string.settings_save_failed,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
         )
     }
@@ -799,6 +591,7 @@ private fun WeTypeSettingsScreen(
         blurRadius = WeTypeSettings.DEFAULT_BLUR_RADIUS
         cornerRadius = WeTypeSettings.DEFAULT_CORNER_RADIUS
         keyCornerRadius = WeTypeSettings.DEFAULT_KEY_CORNER_RADIUS
+        bubbleAlpha = WeTypeSettings.DEFAULT_BUBBLE_ALPHA
         edgeHighlightEnabled = WeTypeSettings.DEFAULT_EDGE_HIGHLIGHT_ENABLED
         edgeHighlightIntensity = WeTypeSettings.DEFAULT_EDGE_HIGHLIGHT_INTENSITY
         candidateBackgroundAlpha = WeTypeSettings.DEFAULT_CANDIDATE_BACKGROUND_ALPHA
@@ -848,10 +641,90 @@ private fun WeTypeSettingsScreen(
         appearanceGroups.forEachIndexed { index, group ->
             appearanceGroupColors[index] = group.defaultColor
         }
+        liquidGlass = WeTypeSettings.DEFAULT_LIQUID_GLASS_BOTTOM_BAR
+        WeTypeSettings.setLiquidGlassBottomBar(
+            preferencesContext,
+            WeTypeSettings.DEFAULT_LIQUID_GLASS_BOTTOM_BAR
+        )
+        blurEnabled = WeTypeSettings.DEFAULT_APP_BLUR_ENABLED
+        WeTypeSettings.setAppBlurEnabled(
+            preferencesContext,
+            WeTypeSettings.DEFAULT_APP_BLUR_ENABLED
+        )
+        floatingBar = WeTypeSettings.DEFAULT_APP_FLOATING_BAR
+        WeTypeSettings.setAppFloatingBar(
+            preferencesContext,
+            WeTypeSettings.DEFAULT_APP_FLOATING_BAR
+        )
+        bottomBarHaptic = WeTypeSettings.DEFAULT_APP_BOTTOM_BAR_HAPTIC
+        WeTypeSettings.setBottomBarHaptic(
+            preferencesContext,
+            WeTypeSettings.DEFAULT_APP_BOTTOM_BAR_HAPTIC
+        )
+        onThemeModeChange(WeTypeSettings.DEFAULT_APP_THEME_MODE)
         syncEditorFromState()
         saveSettings(
             successMessage = R.string.settings_reset_toast,
             glassOverridesToSave = GlassMaterialOverrides()
+        )
+    }
+
+    // 二级路由共用：Feature 五段按集合过滤展示，避免三十余个参数重复三遍。
+    fun LazyListScope.FeatureSections(sections: Set<String>) {
+        FeatureTabContent(
+            logoEnabled = logoEnabled,
+            onLogoEnabledChange = { logoEnabled = it },
+            logoShowEnabled = logoShowEnabled,
+            onLogoShowEnabledChange = { logoShowEnabled = it },
+            logoColorMode = logoColorMode,
+            onLogoColorModeChange = { logoColorMode = it },
+            logoCustomColorInput = logoCustomColorInput,
+            onLogoCustomColorInputChange = { logoCustomColorInput = it },
+            logoImageSummary = logoImageSummary,
+            onOpenLogoImage = {
+                WeTypeHostLauncher.launchLogoImagePage(settingsContext as? Activity)
+            },
+            onResetLogo = {
+                logoEnabled = WeTypeSettings.DEFAULT_LOGO_ENABLED
+                logoShowEnabled = WeTypeSettings.DEFAULT_LOGO_SHOW_ENABLED
+                logoColorMode = WeTypeSettings.DEFAULT_LOGO_COLOR_MODE
+                logoCustomColorInput = formatRgb(WeTypeSettings.DEFAULT_LOGO_CUSTOM_COLOR)
+                logoImageEnabled = WeTypeSettings.DEFAULT_LOGO_IMAGE_ENABLED
+                logoImageType = WeTypeSettings.DEFAULT_LOGO_IMAGE_TYPE
+                logoSvgRecolorEnabled = WeTypeSettings.DEFAULT_LOGO_SVG_RECOLOR_ENABLED
+            },
+            fontMode = fontMode,
+            onFontModeChange = { fontMode = it },
+            onResetFont = {
+                fontMode = WeTypeSettings.DEFAULT_FONT_MODE
+            },
+            showCrossDeviceClipboard = showCrossDeviceClipboard,
+            onShowCrossDeviceClipboardChange = { showCrossDeviceClipboard = it },
+            removeClipboardRetentionLimit = removeClipboardRetentionLimit,
+            onRemoveClipboardRetentionLimitChange = { removeClipboardRetentionLimit = it },
+            removeClipboardTextLimit = removeClipboardTextLimit,
+            onRemoveClipboardTextLimitChange = { removeClipboardTextLimit = it },
+            clipboardSearchEnabled = clipboardSearchEnabled,
+            onClipboardSearchEnabledChange = { clipboardSearchEnabled = it },
+            clipboardSearchClearOnBack = clipboardSearchClearOnBack,
+            onClipboardSearchClearOnBackChange = { clipboardSearchClearOnBack = it },
+            clipboardImageAdjustRatio = clipboardImageAdjustRatio,
+            onClipboardImageAdjustRatioChange = { clipboardImageAdjustRatio = it },
+            clipboardImageCrop = clipboardImageCrop,
+            onClipboardImageCropChange = { clipboardImageCrop = it },
+            clipboardImageUniformRowHeight = clipboardImageUniformRowHeight,
+            onClipboardImageUniformRowHeightChange = { clipboardImageUniformRowHeight = it },
+            clipboardImageMaxCount = clipboardImageMaxCount,
+            onClipboardImageMaxCountChange = { clipboardImageMaxCount = it },
+            clipboardImageMaxSizeMb = clipboardImageMaxSizeMb,
+            onClipboardImageMaxSizeMbChange = { clipboardImageMaxSizeMb = it },
+            onOpenClipboardBackup = {
+                WeTypeHostLauncher.launchBackupPage(settingsContext as? Activity)
+            },
+            disableHotUpdate = disableHotUpdate,
+            onDisableHotUpdateChange = { disableHotUpdate = it },
+            onRestoreDefaults = ::restoreDefaults,
+            visibleSections = sections
         )
     }
 
@@ -871,64 +744,212 @@ private fun WeTypeSettingsScreen(
     }
 
     val scrollBehavior = MiuixScrollBehavior(state = rememberTopAppBarState())
+    val restartScope = rememberCoroutineScope()
 
-    Scaffold(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MiuixTheme.colorScheme.background),
-        topBar = {
+    // 底栏四 tab + 二级路由：detailRoute 非空时展示详情并隐藏 hub。
+    val contentKey = detailRoute ?: when (bottomTab) {
+        0 -> "home"
+        1 -> "function"
+        2 -> "beautify"
+        else -> "settings"
+    }
+    val bottomTabs = remember {
+        listOf(
+            BottomTab("首页", MiuixIcons.All),
+            BottomTab("功能", MiuixIcons.Tune),
+            BottomTab("美化", MiuixIcons.Theme),
+            BottomTab("设置", MiuixIcons.Settings)
+        )
+    }
+    val topTitle = when {
+        detailRoute == "theme" -> "主题设置"
+        detailRoute == "gesture" -> "按键手势"
+        detailRoute == "clipboard" -> "剪贴板增强"
+        detailRoute == "appearance" -> "界面美化"
+        detailRoute == "font" -> "字体替换"
+        detailRoute == "logo" -> "键盘 Logo"
+        bottomTab == 0 -> "首页"
+        bottomTab == 1 -> "功能"
+        bottomTab == 2 -> "美化"
+        else -> "设置"
+    }
+
+    // 顶栏高度由玻璃框架实时回传（收起/展开都跟随），内容永远贴着栏底，无缝隙。
+    GlassChromeScaffold(
+        enableLiquidGlass = liquidGlass,
+        blurEnabled = blurEnabled,
+        floatingBar = floatingBar,
+        darkMode = darkMode,
+        showBottomBar = detailRoute == null,
+        bottomBarHaptic = bottomBarHaptic,
+        topBarProgressiveBlur = topBarProgressiveBlur,
+        modifier = Modifier.fillMaxSize(),
+        topBar = { topBarBackdrop ->
             TopAppBar(
-                title = stringResource(R.string.settings_title),
+                title = topTitle,
+                color = ComposeColor.Transparent,
                 scrollBehavior = scrollBehavior,
                 navigationIcon = {
-                    ModuleActivationTag(
-                        status = activationStatus,
-                    )
-                },
-                actions = {
-                    IconButton(
-                        onClick = { saveSettings() }
+                    AnimatedVisibility(
+                        visible = detailRoute != null,
+                        enter = fadeIn(spring(stiffness = Spring.StiffnessMediumLow)) + expandHorizontally(),
+                        exit = fadeOut(spring(stiffness = Spring.StiffnessMediumLow)) + shrinkHorizontally()
                     ) {
-                        Icon(
-                            imageVector = MiuixIcons.Ok,
-                            contentDescription = stringResource(R.string.settings_save_title)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .padding(start = 4.dp)
+                                .size(40.dp)
+                                .miuiPressBounce()
+                                .drawBackdrop(
+                                    backdrop = topBarBackdrop,
+                                    shape = { CircleShape },
+                                    effects = {
+                                        vibrancy()
+                                        blur(12.dp.toPx())
+                                    },
+                                    highlight = { Highlight.Default },
+                                    shadow = { null },
+                                    innerShadow = { null },
+                                    onDrawSurface = {
+                                        drawRect(
+                                            if (darkMode) ComposeColor.White.copy(alpha = 0.08f)
+                                            else ComposeColor.Black.copy(alpha = 0.05f)
+                                        )
+                                    }
+                                )
+                                .border(
+                                    width = 0.5.dp,
+                                    color = if (darkMode) ComposeColor.White.copy(alpha = 0.22f)
+                                    else ComposeColor.White.copy(alpha = 0.65f),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    detailRoute = null
+                                    scrollBehavior.state.heightOffset = 0f
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Back,
+                                    contentDescription = "返回"
+                                )
+                            }
+                        }
                     }
                 },
-                bottomContent = {
-                    TabRowWithContour(
-                        tabs = categoryTabs,
-                        selectedTabIndex = categoryPagerState.currentPage,
-                        onTabSelected = { index ->
-                            coroutineScope.launch {
-                                categoryPagerState.animateScrollToPage(index)
-                            }
-                        },
+                actions = {
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
+                            .padding(end = 4.dp)
+                            .size(40.dp)
+                            .miuiPressBounce()
+                            .drawBackdrop(
+                                backdrop = topBarBackdrop,
+                                shape = { CircleShape },
+                                effects = {
+                                    vibrancy()
+                                    blur(12.dp.toPx())
+                                },
+                                highlight = { Highlight.Default },
+                                shadow = { null },
+                                innerShadow = { null },
+                                onDrawSurface = {
+                                    drawRect(
+                                        if (darkMode) ComposeColor.White.copy(alpha = 0.08f)
+                                        else ComposeColor.Black.copy(alpha = 0.05f)
+                                    )
+                                }
+                            )
+                            .border(
+                                width = 0.5.dp,
+                                color = if (darkMode) ComposeColor.White.copy(alpha = 0.22f)
+                                else ComposeColor.White.copy(alpha = 0.65f),
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        IconButton(
+                            onClick = {
+                                if (saveSettings(quietOnSuccess = true)) {
+                                    restartScope.launch {
+                                        val hint = when (ImeRestarter.restartWeType(context)) {
+                                            ImeRestarter.Result.Restarted ->
+                                                context.getString(R.string.settings_restart_done)
+
+                                            ImeRestarter.Result.ModuleInactive ->
+                                                context.getString(R.string.settings_restart_inactive)
+
+                                            ImeRestarter.Result.Failed ->
+                                                context.getString(R.string.settings_restart_failed)
+                                        }
+                                        Toast.makeText(context, hint, Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = MiuixIcons.Ok,
+                                contentDescription = stringResource(R.string.settings_save_title)
+                            )
+                        }
+                    }
                 }
             )
+        },
+        tabs = bottomTabs,
+        selectedIndex = bottomTab,
+        onSelect = {
+            bottomTab = it
+            detailRoute = null
+            scrollBehavior.state.heightOffset = 0f
         }
-    ) { paddingValues ->
-        HorizontalPager(
-            state = categoryPagerState,
-            modifier = Modifier.fillMaxSize()
-        ) { page ->
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .overScrollVertical()
-                    .nestedScroll(scrollBehavior.nestedScrollConnection),
-                contentPadding = PaddingValues(
-                    top = paddingValues.calculateTopPadding(),
-                    bottom = 40.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                when (page) {
-                0 -> {
+    ) { barContentModifier, topPadding ->
+        BackHandler(enabled = detailRoute != null) {
+            detailRoute = null
+            scrollBehavior.state.heightOffset = 0f
+        }
+        val contentBottomPadding by animateDpAsState(
+            targetValue = if (detailRoute != null) 48.dp else 150.dp,
+            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+            label = "contentBottomPadding"
+        )
+        Box(modifier = barContentModifier.fillMaxSize()) {
+            AnimatedContent(
+                targetState = contentKey,
+                transitionSpec = {
+                    MiuixMotion.pageTransition(initialState, targetState)
+                },
+                modifier = Modifier.fillMaxSize(),
+                label = "MainContentTransition"
+            ) { targetKey ->
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .overScrollVertical()
+                        .nestedScroll(scrollBehavior.nestedScrollConnection),
+                    contentPadding = PaddingValues(
+                        // 实测顶栏高度之外再留 12dp，大标题和首卡之间透气。
+                        top = topPadding + 12.dp,
+                        bottom = contentBottomPadding
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    when (targetKey) {
+                "home" -> {
+                    HomePageItems(
+                        activationStatus = activationStatus,
+                        darkMode = darkMode
+                    )
+                }
+                "function" -> {
+                    FunctionHubItems(onOpen = { detailRoute = it })
+                }
+                "beautify" -> {
+                    BeautifyHubItems(onOpen = { detailRoute = it })
+                }
+                "appearance" -> {
                     AppearanceTabContent(
                         currentModeIsDark = currentModeIsDark,
                         onModeChange = { newDarkMode ->
@@ -967,18 +988,14 @@ private fun WeTypeSettingsScreen(
                                 }
                             }
                         },
-                        onColorSelect = { presetRgb ->
-                            val rgb = presetRgb and 0xFFFFFF
-                            val argb = (alphaValue.coerceIn(0, 255) shl 24) or rgb
-                            updateColorFromArgb(argb)
-                            colorInput = formatRgb(rgb)
-                        },
                         blurRadius = blurRadius,
                         onBlurRadiusChange = { blurRadius = it },
                         cornerRadius = cornerRadius,
                         onCornerRadiusChange = { cornerRadius = it },
                         keyCornerRadius = keyCornerRadius,
                         onKeyCornerRadiusChange = { keyCornerRadius = it },
+                        bubbleAlpha = bubbleAlpha,
+                        onBubbleAlphaChange = { bubbleAlpha = it },
                         edgeHighlightEnabled = edgeHighlightEnabled,
                         onEdgeHighlightEnabledChange = { edgeHighlightEnabled = it },
                         edgeHighlightIntensity = edgeHighlightIntensity,
@@ -1014,7 +1031,7 @@ private fun WeTypeSettingsScreen(
                     )
                 }
 
-                1 -> {
+                "gesture" -> {
                     GestureTabContent(
                         qwertyGestureEnabled = qwertyGestureEnabled,
                         onQwertyGestureEnabledChange = { qwertyGestureEnabled = it },
@@ -1049,223 +1066,110 @@ private fun WeTypeSettingsScreen(
                     )
                 }
 
-                2 -> {
-                    FeatureTabContent(
-                        logoEnabled = logoEnabled,
-                        onLogoEnabledChange = { logoEnabled = it },
-                        logoShowEnabled = logoShowEnabled,
-                        onLogoShowEnabledChange = { logoShowEnabled = it },
-                        logoColorMode = logoColorMode,
-                        onLogoColorModeChange = { logoColorMode = it },
-                        logoCustomColorInput = logoCustomColorInput,
-                        onLogoCustomColorInputChange = { logoCustomColorInput = it },
-                        logoImageSummary = logoImageSummary,
-                        onOpenLogoImage = {
-                            WeTypeHostLauncher.launchLogoImagePage(settingsContext as? Activity)
-                        },
-                        onResetLogo = {
-                            logoEnabled = WeTypeSettings.DEFAULT_LOGO_ENABLED
-                            logoShowEnabled = WeTypeSettings.DEFAULT_LOGO_SHOW_ENABLED
-                            logoColorMode = WeTypeSettings.DEFAULT_LOGO_COLOR_MODE
-                            logoCustomColorInput = formatRgb(WeTypeSettings.DEFAULT_LOGO_CUSTOM_COLOR)
-                            logoImageEnabled = WeTypeSettings.DEFAULT_LOGO_IMAGE_ENABLED
-                            logoImageType = WeTypeSettings.DEFAULT_LOGO_IMAGE_TYPE
-                            logoSvgRecolorEnabled = WeTypeSettings.DEFAULT_LOGO_SVG_RECOLOR_ENABLED
-                        },
-                        fontMode = fontMode,
-                        onFontModeChange = { fontMode = it },
-                        onResetFont = {
-                            fontMode = WeTypeSettings.DEFAULT_FONT_MODE
-                        },
-                        showCrossDeviceClipboard = showCrossDeviceClipboard,
-                        onShowCrossDeviceClipboardChange = { showCrossDeviceClipboard = it },
-                        removeClipboardRetentionLimit = removeClipboardRetentionLimit,
-                        onRemoveClipboardRetentionLimitChange = { removeClipboardRetentionLimit = it },
-                        removeClipboardTextLimit = removeClipboardTextLimit,
-                        onRemoveClipboardTextLimitChange = { removeClipboardTextLimit = it },
-                        clipboardSearchEnabled = clipboardSearchEnabled,
-                        onClipboardSearchEnabledChange = { clipboardSearchEnabled = it },
-                        clipboardSearchClearOnBack = clipboardSearchClearOnBack,
-                        onClipboardSearchClearOnBackChange = { clipboardSearchClearOnBack = it },
-                        clipboardImageAdjustRatio = clipboardImageAdjustRatio,
-                        onClipboardImageAdjustRatioChange = { clipboardImageAdjustRatio = it },
-                        clipboardImageCrop = clipboardImageCrop,
-                        onClipboardImageCropChange = { clipboardImageCrop = it },
-                        clipboardImageUniformRowHeight = clipboardImageUniformRowHeight,
-                        onClipboardImageUniformRowHeightChange = { clipboardImageUniformRowHeight = it },
-                        clipboardImageMaxCount = clipboardImageMaxCount,
-                        onClipboardImageMaxCountChange = { clipboardImageMaxCount = it },
-                        clipboardImageMaxSizeMb = clipboardImageMaxSizeMb,
-                        onClipboardImageMaxSizeMbChange = { clipboardImageMaxSizeMb = it },
-                        onOpenClipboardBackup = {
-                            WeTypeHostLauncher.launchBackupPage(settingsContext as? Activity)
-                        },
-                        disableHotUpdate = disableHotUpdate,
-                        onDisableHotUpdateChange = { disableHotUpdate = it },
-                        activationStatus = activationStatus,
-                        onRestoreDefaults = ::restoreDefaults
-                    )
-                }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ModuleActivationTag(
-    status: ModuleActivationTracker.ActivationStatus,
-    modifier: Modifier = Modifier
-) {
-    val backgroundColor = if (status.isActive) {
-        ComposeColor(0xFF4F9A71)
-    } else {
-        ComposeColor(0xFFC86F67)
-    }
-    val label = if (status.isActive) {
-        stringResource(R.string.settings_module_active_tag)
-    } else {
-        stringResource(R.string.settings_module_inactive_tag)
-    }
-    Box(
-        modifier = modifier
-            .clip(ContinuousRoundedRectangle(999.dp))
-            .background(backgroundColor)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            color = ComposeColor.White,
-            style = MiuixTheme.textStyles.body2
-        )
-    }
-}
-
-private data class PresetColorItem(
-    val name: String,
-    val color: Int
-)
-
-private val lightColorPresets = listOf(
-    PresetColorItem("默认灰", 0xD4D4D4),
-    PresetColorItem("纯白", 0xFFFFFF),
-    PresetColorItem("冰川蓝", 0xD0E4F5),
-    PresetColorItem("薄荷绿", 0xD2EBD9),
-    PresetColorItem("樱花粉", 0xFCE4EC),
-    PresetColorItem("薰衣草", 0xEDE7F6),
-    PresetColorItem("暖阳米", 0xFFF3E0),
-    PresetColorItem("曜石灰", 0x3C3F41)
-)
-
-private val darkColorPresets = listOf(
-    PresetColorItem("默认黑", 0x000000),
-    PresetColorItem("深空灰", 0x1E1E1E),
-    PresetColorItem("极夜黑", 0x121212),
-    PresetColorItem("夜空蓝", 0x1A2238),
-    PresetColorItem("青墨绿", 0x1B262C),
-    PresetColorItem("暗夜紫", 0x261C2C),
-    PresetColorItem("葡萄酒", 0x2D1B22),
-    PresetColorItem("炭石灰", 0x2B2D30)
-)
-
-@Composable
-private fun ColorPresetPalette(
-    isDark: Boolean,
-    currentColorRgb: Int,
-    onSelectColor: (Int) -> Unit
-) {
-    val presets = remember(isDark) {
-        if (isDark) darkColorPresets else lightColorPresets
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        Text(
-            text = "预设色卡",
-            style = MiuixTheme.textStyles.main
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = "点击快速应用推荐底色",
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            style = MiuixTheme.textStyles.body2
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Column(
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            listOf(presets.take(4), presets.drop(4)).forEach { rowPresets ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    rowPresets.forEach { item ->
-                        val isSelected = (currentColorRgb and 0xFFFFFF) == (item.color and 0xFFFFFF)
-                        val itemComposeColor = ComposeColor(item.color or 0xFF000000.toInt())
-                        val isLight = isLightColor(item.color or 0xFF000000.toInt())
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MiuixTheme.colorScheme.surfaceContainerHigh)
-                                .border(
-                                    width = if (isSelected) 2.dp else 1.dp,
-                                    color = if (isSelected) MiuixTheme.colorScheme.primary
-                                    else MiuixTheme.colorScheme.outline.copy(alpha = 0.25f),
-                                    shape = RoundedCornerShape(8.dp)
-                                )
-                                .clickable { onSelectColor(item.color) }
-                                .padding(vertical = 8.dp, horizontal = 4.dp),
-                            contentAlignment = Alignment.Center
+                "settings" -> {
+                    item {
+                        Card(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            insideMargin = PaddingValues(0.dp)
                         ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(24.dp)
-                                        .clip(ContinuousRoundedRectangle(999.dp))
-                                        .background(itemComposeColor)
-                                        .border(
-                                            width = 1.dp,
-                                            color = if (isLight) ComposeColor.Black.copy(alpha = 0.15f)
-                                            else ComposeColor.White.copy(alpha = 0.2f),
-                                            shape = ContinuousRoundedRectangle(999.dp)
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (isSelected) {
-                                        Icon(
-                                            imageVector = MiuixIcons.Ok,
-                                            contentDescription = null,
-                                            tint = if (isLight) ComposeColor.Black else ComposeColor.White,
-                                            modifier = Modifier.size(14.dp)
-                                        )
+                            Column {
+                                ArrowPreference(
+                                    title = "主题设置",
+                                    summary = "外观模式、悬浮底栏、顶栏渐进模糊与触觉反馈",
+                                    onClick = { detailRoute = "theme" }
+                                )
+                            }
+                        }
+                    }
+                    FeatureSections(setOf("protection", "about"))
+                }
+                "theme" -> {
+                    item {
+                        Card(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            insideMargin = PaddingValues(0.dp)
+                        ) {
+                            Column(modifier = Modifier.animateContentSize(MiuixMotion.springSpec())) {
+                                MiuixDropdownPreference(
+                                    title = "外观模式",
+                                    items = listOf("跟随系统", "浅色模式", "深色模式"),
+                                    selectedIndex = themeMode.coerceIn(
+                                        WeTypeSettings.APP_THEME_MODE_FOLLOW_SYSTEM,
+                                        WeTypeSettings.APP_THEME_MODE_DARK
+                                    ),
+                                    onSelectedIndexChange = { onThemeModeChange(it) }
+                                )
+                                MiuixSwitchWidget(
+                                    title = "悬浮底栏",
+                                    description = "使用 Apple 风格的悬浮底栏，关闭则用全宽 docked 栏",
+                                    checked = floatingBar,
+                                    onCheckedChange = {
+                                        floatingBar = it
+                                        WeTypeSettings.setAppFloatingBar(preferencesContext, it)
                                     }
+                                )
+                                AnimatedVisibility(
+                                    visible = floatingBar,
+                                    enter = expandVertically(MiuixMotion.springSpec()) + fadeIn(),
+                                    exit = shrinkVertically(MiuixMotion.springSpec()) + fadeOut()
+                                ) {
+                                    MiuixSwitchWidget(
+                                        title = "液态玻璃",
+                                        description = "启用悬浮底栏的液态玻璃折射，关闭则为普通高斯模糊",
+                                        checked = liquidGlass,
+                                        onCheckedChange = {
+                                            liquidGlass = it
+                                            WeTypeSettings.setLiquidGlassBottomBar(preferencesContext, it)
+                                        }
+                                    )
                                 }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = item.name,
-                                    style = MiuixTheme.textStyles.body2,
-                                    fontSize = 11.sp,
-                                    color = if (isSelected) MiuixTheme.colorScheme.primary
-                                    else MiuixTheme.colorScheme.onSurface,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    maxLines = 1
+                                MiuixSwitchWidget(
+                                    title = "模糊",
+                                    description = "非悬浮模式下顶栏和底栏的模糊效果",
+                                    checked = blurEnabled,
+                                    enabled = !floatingBar,
+                                    onCheckedChange = {
+                                        blurEnabled = it
+                                        WeTypeSettings.setAppBlurEnabled(preferencesContext, it)
+                                    }
+                                )
+                                MiuixSwitchWidget(
+                                    title = "顶栏渐进模糊",
+                                    description = "顶栏背景边缘平滑过渡淡出，呈现自然的渐变层次",
+                                    checked = topBarProgressiveBlur,
+                                    enabled = floatingBar || blurEnabled,
+                                    onCheckedChange = {
+                                        topBarProgressiveBlur = it
+                                        WeTypeSettings.setTopBarProgressiveBlur(preferencesContext, it)
+                                    }
+                                )
+                                MiuixSwitchWidget(
+                                    title = "底栏震动",
+                                    description = "切换底部导航栏时触发触觉反馈",
+                                    checked = bottomBarHaptic,
+                                    onCheckedChange = {
+                                        bottomBarHaptic = it
+                                        WeTypeSettings.setBottomBarHaptic(preferencesContext, it)
+                                    }
                                 )
                             }
                         }
                     }
                 }
+                "clipboard" -> {
+                    FeatureSections(setOf("clipboard"))
+                }
+                "font" -> {
+                    FeatureSections(setOf("font"))
+                }
+                "logo" -> {
+                    FeatureSections(setOf("logo"))
+                }
+                }
+            }
             }
         }
-    }
+        }
 }
 
 private fun LazyListScope.AppearanceTabContent(
@@ -1276,13 +1180,14 @@ private fun LazyListScope.AppearanceTabContent(
     onAlphaChange: (Int) -> Unit,
     colorInput: String,
     onColorInputChange: (String) -> Unit,
-    onColorSelect: (Int) -> Unit,
     blurRadius: Int,
     onBlurRadiusChange: (Int) -> Unit,
     cornerRadius: Int,
     onCornerRadiusChange: (Int) -> Unit,
     keyCornerRadius: Int,
     onKeyCornerRadiusChange: (Int) -> Unit,
+    bubbleAlpha: Int,
+    onBubbleAlphaChange: (Int) -> Unit,
     edgeHighlightEnabled: Boolean,
     onEdgeHighlightEnabledChange: (Boolean) -> Unit,
     edgeHighlightIntensity: Int,
@@ -1360,9 +1265,6 @@ private fun LazyListScope.AppearanceTabContent(
 
     // 2. 颜色与模式
     item {
-        SmallTitle(
-            text = stringResource(R.string.settings_group_color)
-        )
         Card(
             modifier = Modifier.padding(horizontal = 16.dp),
             insideMargin = PaddingValues(0.dp)
@@ -1392,14 +1294,6 @@ private fun LazyListScope.AppearanceTabContent(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
-
-
-                // 预设色卡快速选择器
-                ColorPresetPalette(
-                    isDark = currentModeIsDark,
-                    currentColorRgb = currentColor and 0xFFFFFF,
-                    onSelectColor = onColorSelect
-                )
 
 
                 // 自定义 HEX 颜色输入与取色器入口
@@ -1473,14 +1367,11 @@ private fun LazyListScope.AppearanceTabContent(
 
     // 3. 外观与特效
     item {
-        SmallTitle(
-            text = stringResource(R.string.settings_group_appearance)
-        )
         Card(
             modifier = Modifier.padding(horizontal = 16.dp),
             insideMargin = PaddingValues(0.dp)
         ) {
-            Column {
+            Column(modifier = Modifier.animateContentSize(MiuixMotion.springSpec())) {
                 MiuixSwitchWidget(
                     title = stringResource(R.string.settings_hyper_material_title),
                     description = stringResource(
@@ -1491,14 +1382,20 @@ private fun LazyListScope.AppearanceTabContent(
                     enabled = hyperMaterialAvailable,
                     onCheckedChange = onHyperMaterialEnabledChange
                 )
-                if (hyperMaterialEnabled) {
-                    HorizontalDivider()
-                    GlassOverrideEditor(
-                        values = glassInput,
-                        enabled = hyperMaterialAvailable && glassSupported,
-                        onValueChange = onGlassInputChange,
-                        onReset = onGlassReset
-                    )
+                AnimatedVisibility(
+                    visible = hyperMaterialEnabled,
+                    enter = expandVertically(MiuixMotion.springSpec()) + fadeIn(),
+                    exit = shrinkVertically(MiuixMotion.springSpec()) + fadeOut()
+                ) {
+                    Column {
+                        HorizontalDivider()
+                        GlassOverrideEditor(
+                            values = glassInput,
+                            enabled = hyperMaterialAvailable && glassSupported,
+                            onValueChange = onGlassInputChange,
+                            onReset = onGlassReset
+                        )
+                    }
                 }
                 HorizontalDivider()
                 MiuixSwitchWidget(
@@ -1509,7 +1406,11 @@ private fun LazyListScope.AppearanceTabContent(
                     onCheckedChange = onEdgeHighlightEnabledChange
                 )
 
-                if (edgeHighlightEnabled) {
+                AnimatedVisibility(
+                    visible = edgeHighlightEnabled,
+                    enter = expandVertically(MiuixMotion.springSpec()) + fadeIn(),
+                    exit = shrinkVertically(MiuixMotion.springSpec()) + fadeOut()
+                ) {
                     SliderPreferenceItem(
                         title = stringResource(R.string.settings_edge_highlight_intensity_title),
                         value = edgeHighlightIntensity,
@@ -1542,6 +1443,13 @@ private fun LazyListScope.AppearanceTabContent(
                     value = keyCornerRadius,
                     max = WeTypeSettings.MAX_KEY_CORNER_RADIUS,
                     onValueChange = onKeyCornerRadiusChange
+                )
+
+                SliderPreferenceItem(
+                    title = stringResource(R.string.settings_bubble_opacity_title),
+                    value = bubbleAlpha,
+                    max = 255,
+                    onValueChange = onBubbleAlphaChange
                 )
 
                 SliderPreferenceItem(
@@ -2450,7 +2358,6 @@ private fun LazyListScope.GestureTabContent(
 ) {
     // 1. 手势总控卡片
     item {
-        SmallTitle(text = "手势总控")
         Card(
             modifier = Modifier.padding(horizontal = 16.dp),
             insideMargin = PaddingValues(0.dp)
@@ -2486,7 +2393,6 @@ private fun LazyListScope.GestureTabContent(
 
     // 2. 灵敏度阈值卡片
     item {
-        SmallTitle(text = "灵敏度阈值")
         Card(
             modifier = Modifier.padding(horizontal = 16.dp),
             insideMargin = PaddingValues(0.dp)
@@ -2510,7 +2416,6 @@ private fun LazyListScope.GestureTabContent(
 
     // 3. 标签样式卡片
     item {
-        SmallTitle(text = "标签样式")
         Card(
             modifier = Modifier.padding(horizontal = 16.dp),
             insideMargin = PaddingValues(0.dp)
@@ -2581,7 +2486,6 @@ private fun LazyListScope.GestureTabContent(
 
     // 4. 可视化键位动作映射编辑器卡片
     item {
-        SmallTitle(text = "按键手势映射")
         Card(
             modifier = Modifier.padding(horizontal = 16.dp),
             insideMargin = PaddingValues(0.dp)
@@ -3018,18 +2922,17 @@ private fun LazyListScope.FeatureTabContent(
     onOpenClipboardBackup: () -> Unit,
     disableHotUpdate: Boolean,
     onDisableHotUpdateChange: (Boolean) -> Unit,
-    activationStatus: ModuleActivationTracker.ActivationStatus,
-    onRestoreDefaults: () -> Unit
+    onRestoreDefaults: () -> Unit,
+    visibleSections: Set<String>? = null
 ) {
     // 1. 键盘 Logo 卡片
-    item {
+    if (visibleSections == null || "logo" in visibleSections) item {
         val context = LocalContext.current
         val logoColorModeOptions = listOf(
             WeTypeSettings.LOGO_COLOR_MODE_BRAND,
             WeTypeSettings.LOGO_COLOR_MODE_SYSTEM,
             WeTypeSettings.LOGO_COLOR_MODE_CUSTOM
         )
-        SmallTitle(text = "键盘 Logo")
         Card(
             modifier = Modifier.padding(horizontal = 16.dp),
             insideMargin = PaddingValues(0.dp)
@@ -3110,14 +3013,13 @@ private fun LazyListScope.FeatureTabContent(
     }
 
     // 2. 字体替换卡片
-    item {
+    if (visibleSections == null || "font" in visibleSections) item {
         val context = LocalContext.current
         val fontModeOptions = listOf(
             WeTypeSettings.FONT_MODE_OFFICIAL,
             WeTypeSettings.FONT_MODE_MODULE,
             WeTypeSettings.FONT_MODE_SYSTEM
         )
-        SmallTitle(text = "字体替换")
         Card(
             modifier = Modifier.padding(horizontal = 16.dp),
             insideMargin = PaddingValues(0.dp)
@@ -3148,8 +3050,7 @@ private fun LazyListScope.FeatureTabContent(
     }
 
     // 3. 剪贴板增强卡片
-    item {
-        SmallTitle(text = "剪贴板增强")
+    if (visibleSections == null || "clipboard" in visibleSections) item {
         Card(
             modifier = Modifier.padding(horizontal = 16.dp),
             insideMargin = PaddingValues(0.dp)
@@ -3237,8 +3138,7 @@ private fun LazyListScope.FeatureTabContent(
     }
 
     // 4. 进阶系统防护卡片
-    item {
-        SmallTitle(text = "进阶系统防护")
+    if (visibleSections == null || "protection" in visibleSections) item {
         Card(
             modifier = Modifier.padding(horizontal = 16.dp),
             insideMargin = PaddingValues(0.dp)
@@ -3255,46 +3155,23 @@ private fun LazyListScope.FeatureTabContent(
     }
 
     // 5. 关于与重置卡片
-    item {
+    if (visibleSections == null || "about" in visibleSections) item {
         val context = LocalContext.current
-        SmallTitle(text = "关于与重置")
         Card(
             modifier = Modifier.padding(horizontal = 16.dp),
             insideMargin = PaddingValues(0.dp)
         ) {
             Column {
                 BasicComponent(
-                    title = "模块版本",
-                    summary = "v${BuildConfig.VERSION_NAME} (Code ${BuildConfig.VERSION_CODE})",
-                    endActions = {
-                        val statusText = if (activationStatus.isActive) "已激活" else "未激活"
-                        val statusBg = if (activationStatus.isActive) ComposeColor(0xFF4F9A71) else ComposeColor(0xFFC86F67)
-                        Box(
-                            modifier = Modifier
-                                .clip(ContinuousRoundedRectangle(999.dp))
-                                .background(statusBg)
-                                .padding(horizontal = 8.dp, vertical = 3.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = statusText,
-                                color = ComposeColor.White,
-                                style = MiuixTheme.textStyles.body2,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-                )
-                BasicComponent(
                     title = stringResource(R.string.settings_visit_github_title),
-                    summary = "https://github.com/Costben/WeType-Enhance",
+                    summary = "https://github.com/xu-qian123/WeType-3t",
                     titleColor = BasicComponentDefaults.titleColor(
                         color = MiuixTheme.colorScheme.primary
                     ),
                     onClick = {
                         val intent = Intent(
                             Intent.ACTION_VIEW,
-                            Uri.parse("https://github.com/Costben/WeType-Enhance")
+                            Uri.parse("https://github.com/xu-qian123/WeType-3t")
                         )
                         context.startActivity(intent)
                     }
@@ -3303,6 +3180,162 @@ private fun LazyListScope.FeatureTabContent(
                     title = stringResource(R.string.settings_reset_title),
                     summary = stringResource(R.string.settings_reset_desc),
                     onClick = onRestoreDefaults
+                )
+            }
+        }
+    }
+}
+
+// ---------- 底栏四 tab：首页 / 功能 hub / 美化 hub ----------
+
+private fun LazyListScope.HomePageItems(
+    activationStatus: ModuleActivationTracker.ActivationStatus,
+    darkMode: Boolean
+) {
+    // 1. 模块工作状态卡（整卡按状态变色，不再用小标签）
+    item {
+        val active = activationStatus.isActive
+        val cardBg = when {
+            active && !darkMode -> ComposeColor(0xFF4F9A71)
+            active && darkMode -> ComposeColor(0xFF2E6B48)
+            !active && !darkMode -> ComposeColor(0xFFC86F67)
+            else -> ComposeColor(0xFF8A4A43)
+        }
+        Card(
+            modifier = Modifier
+                .padding(horizontal = 16.dp)
+                .fillMaxWidth(),
+            insideMargin = PaddingValues(0.dp),
+            colors = CardColors(
+                color = cardBg,
+                contentColor = ComposeColor.White
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = if (active) "工作中" else "模块未启用",
+                    color = ComposeColor.White,
+                    fontSize = 20.sp,
+                    style = MiuixTheme.textStyles.main
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = if (active) {
+                        "LSPosed 心跳正常，Hook 已加载"
+                    } else {
+                        "请在 LSPosed 中启用本模块并勾选微信输入法作用域后重启输入法"
+                    },
+                    color = ComposeColor.White.copy(alpha = 0.85f),
+                    style = MiuixTheme.textStyles.body2
+                )
+            }
+        }
+    }
+
+    // 2. 模块信息卡
+    item {
+        Card(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            insideMargin = PaddingValues(0.dp)
+        ) {
+            Column {
+                BasicComponent(
+                    title = "模块版本",
+                    summary = "v${BuildConfig.VERSION_NAME} (Code ${BuildConfig.VERSION_CODE})"
+                )
+                BasicComponent(
+                    title = "构建时间",
+                    summary = BuildConfig.BUILD_TIME
+                )
+                BasicComponent(
+                    title = "作者",
+                    summary = "xu-qian123"
+                )
+            }
+        }
+    }
+
+    // 3. 设备与构建卡
+    item {
+        val context = LocalContext.current
+        val wetypeVersion = runCatching {
+            val pm = context.packageManager
+            val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getPackageInfo(
+                    "com.tencent.wetype",
+                    PackageManager.PackageInfoFlags.of(0)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageInfo("com.tencent.wetype", 0)
+            }
+            info.versionName ?: "未知"
+        }.getOrDefault("未安装")
+        Card(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            insideMargin = PaddingValues(0.dp)
+        ) {
+            Column {
+                BasicComponent(
+                    title = "微信输入法版本",
+                    summary = wetypeVersion
+                )
+                BasicComponent(
+                    title = "手机型号",
+                    summary = "${Build.MANUFACTURER} ${Build.MODEL}"
+                )
+                BasicComponent(
+                    title = "安卓版本",
+                    summary = "${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
+                )
+            }
+        }
+    }
+}
+
+private fun LazyListScope.FunctionHubItems(onOpen: (String) -> Unit) {
+    item {
+        Card(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            insideMargin = PaddingValues(0.dp)
+        ) {
+            Column {
+                ArrowPreference(
+                    title = "按键手势",
+                    summary = "全键盘与九宫格下滑手势、动作绑定与触觉反馈",
+                    onClick = { onOpen("gesture") }
+                )
+                ArrowPreference(
+                    title = "剪贴板增强",
+                    summary = "上限解除、搜索、图片与备份恢复",
+                    onClick = { onOpen("clipboard") }
+                )
+            }
+        }
+    }
+}
+
+private fun LazyListScope.BeautifyHubItems(onOpen: (String) -> Unit) {
+    item {
+        Card(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            insideMargin = PaddingValues(0.dp)
+        ) {
+            Column {
+                ArrowPreference(
+                    title = "界面美化",
+                    summary = "背景、按键与候选词的颜色、模糊与圆角",
+                    onClick = { onOpen("appearance") }
+                )
+                ArrowPreference(
+                    title = "字体替换",
+                    summary = "官方、内置与系统字体切换",
+                    onClick = { onOpen("font") }
+                )
+                ArrowPreference(
+                    title = "键盘 Logo",
+                    summary = "颜色模式与自定义图片 Logo",
+                    onClick = { onOpen("logo") }
                 )
             }
         }

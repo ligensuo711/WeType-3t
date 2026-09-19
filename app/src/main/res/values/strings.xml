@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">WeType Enhance</string>
-    <string name="xposeddescription">WeType enhancement module: appearance, key gestures, clipboard, system protections, and MIUI full-screen optimization unlocking for scoped input methods</string>
+    <string name="app_name">WeType-3t</string>
+    <string name="xposeddescription">WeType-3t module: appearance, key gestures, clipboard, system protections, and MIUI full-screen optimization unlocking for scoped input methods</string>
 
-    <string name="settings_title">WeType Enhance</string>
+    <string name="settings_title">WeType-3t</string>
     <string name="settings_summary">Input window</string>
     <string name="settings_corner_label">Corner radius</string>
     <string name="settings_light_mode">Light</string>
@@ -21,6 +21,7 @@
     <string name="settings_root_required">Root permission is required</string>
     <string name="settings_restart_done">WeType restarted</string>
     <string name="settings_restart_failed">Failed to restart WeType</string>
+    <string name="settings_restart_inactive">Module is not active in the input method; check the LSPosed scope and restart it manually</string>
 
     <string name="settings_section_preview">Preview</string>
     <string name="settings_section_mode">Color mode</string>
@@ -58,6 +59,7 @@
     <string name="settings_blur_title">Blur strength</string>
     <string name="settings_corner_title">Corner radius</string>
     <string name="settings_key_corner_title">Key corner radius</string>
+    <string name="settings_bubble_opacity_title">Bubble opacity</string>
     <string name="settings_alpha_title">Background opacity</string>
     <string name="settings_key_opacity_title">Key opacity</string>
     <string name="settings_toolbar_icon_bg_opacity_title">Toolbar icon bg opacity</string>

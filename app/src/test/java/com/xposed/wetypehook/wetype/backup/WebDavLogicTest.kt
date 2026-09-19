@@ -71,7 +71,7 @@ class WebDavLogicTest {
                 </d:propstat>
               </d:response>
               <d:response>
-                <d:href>/dav/backup/WeTypeEnhance-clipboard-20260912-221530.zip</d:href>
+                <d:href>/dav/backup/WeType-3t-clipboard-20260912-221530.zip</d:href>
                 <d:propstat>
                   <d:prop>
                     <d:resourcetype/>
@@ -116,7 +116,7 @@ class WebDavLogicTest {
 
         val entries = WebDavPropfindParser.parse(xml, "https://dav.example.com/dav/backup")
         assertEquals(2, entries.size)
-        assertEquals("WeTypeEnhance-clipboard-20260912-221530.zip", entries[0].name)
+        assertEquals("WeType-3t-clipboard-20260912-221530.zip", entries[0].name)
         assertEquals(newer, entries[0].lastModified)
         assertEquals(123456L, entries[0].sizeBytes)
         assertEquals("older file.zip", entries[1].name)

@@ -174,7 +174,7 @@ internal class WebDavClient(
             output.write("$method ${requestPath(url)} HTTP/1.1\r\n".toByteArray(StandardCharsets.US_ASCII))
             output.write("Host: ${hostHeader(url)}\r\n".toByteArray(StandardCharsets.US_ASCII))
             output.write("Connection: close\r\n".toByteArray(StandardCharsets.US_ASCII))
-            output.write("User-Agent: WeType-Enhance\r\n".toByteArray(StandardCharsets.US_ASCII))
+            output.write("User-Agent: WeType-3t\r\n".toByteArray(StandardCharsets.US_ASCII))
             if (username.isNotEmpty() || password.isNotEmpty()) {
                 val token = Base64.getEncoder()
                     .encodeToString("$username:$password".toByteArray(StandardCharsets.UTF_8))

@@ -7,7 +7,6 @@ import android.graphics.Color
 import android.graphics.PorterDuff
 import android.util.Base64
 import com.caverock.androidsvg.SVG
-import kotlin.math.roundToInt
 import com.xposed.wetypehook.wetype.hook.WeTypeIconDrawable
 
 /**
@@ -17,8 +16,8 @@ import com.xposed.wetypehook.wetype.hook.WeTypeIconDrawable
  * 保留原始透明度；PNG 始终原色显示。
  */
 object LogoImageRenderer {
-    /** SVG 栅格化边长：Logo 槽位很小，256px 足够。 */
-    const val SVG_RENDER_EDGE_PX = 256
+    /** Logo 槽位边长（宿主 logo_iv 实测 90x90）：SVG 栅格化与预览统一按槽位输出，所见即所得。 */
+    const val LOGO_SLOT_PX = 90
 
     fun decodePng(base64: String): Bitmap? {
         if (base64.isEmpty()) return null
@@ -30,22 +29,23 @@ object LogoImageRenderer {
     }
 
     /**
-     * SVG 栅格化为 [sizePx] 正方形位图：SVG 按原始比例 Fit 居中绘制，
-     * 空白区域保持透明，从不裁切内容。hook 侧（256）与预览侧（192）共用，
-     * 输出恒为正方形，保证所见即所得。
+     * SVG 栅格化为 [sizePx] 正方形位图：按铺满缩放后居中裁切（centerCrop 语义，
+     * 超出部分由画布裁掉），与 hook 侧 CustomLogoDrawable.centerCrop /
+     * 预览侧 ContentScale.Crop 完全对齐；输出恒为正方形且无透明留白。
+     * 默认按槽位 [LOGO_SLOT_PX] 输出，与真机 1:1。
      */
-    fun renderSvg(svgText: String, sizePx: Int = SVG_RENDER_EDGE_PX): Bitmap? {
+    fun renderSvg(svgText: String, sizePx: Int = LOGO_SLOT_PX): Bitmap? {
         if (svgText.isEmpty()) return null
         return runCatching {
             val svg = SVG.getFromString(svgText)
             val picture = svg.renderToPicture()
             if (picture.width <= 0 || picture.height <= 0) return null
-            val scale = minOf(
+            val scale = maxOf(
                 sizePx / picture.width.toFloat(),
                 sizePx / picture.height.toFloat()
             )
-            val dstWidth = (picture.width * scale).roundToInt().coerceAtLeast(1)
-            val dstHeight = (picture.height * scale).roundToInt().coerceAtLeast(1)
+            val dstWidth = picture.width * scale
+            val dstHeight = picture.height * scale
             val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
             Canvas(bitmap).apply {
                 save()

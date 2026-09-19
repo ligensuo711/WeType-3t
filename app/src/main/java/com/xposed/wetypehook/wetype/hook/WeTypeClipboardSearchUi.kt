@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.PorterDuff
 import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
 import android.text.Editable
@@ -3268,6 +3269,23 @@ internal object WeTypeClipboardSearchUi {
                 classLoader,
                 "ImageView"
             )
+            // 预装 AppCompat 层锁定：后出现的图标实例（懒加载/重建）同样被覆盖，
+            // 无需等到 ensureModeIconSetterHooks 见到实例才装。
+            runCatching {
+                val appCompat = Class.forName(
+                    "androidx.appcompat.widget.AppCompatImageView", false, classLoader
+                )
+                installNearestSetter(
+                    appCompat, classLoader,
+                    "setImageResource", Int::class.javaPrimitiveType, ::installIconSetterHook
+                )
+                installNearestSetter(
+                    appCompat, classLoader,
+                    "setImageDrawable", Drawable::class.java, ::installIconDrawableSetterHook
+                )
+            }.onFailure {
+                AndroidLog.i(TAG, "strip F41 proactive AppCompat lock skipped: ${it.message}")
+            }
             AndroidLog.i(TAG, "strip F41 mode icon stability hook installed")
         } catch (t: Throwable) {
             AndroidLog.e(TAG, "strip F41 mode icon stability hook install failed: $t")
@@ -3279,18 +3297,46 @@ internal object WeTypeClipboardSearchUi {
      * 运行时图标类锁定：宿主翻译图标是 AppCompatImageView 的子类实现，
      * 其 setImageResource 覆盖不会进入 ImageView 同名基类方法。
      * 只锁定实际分发命中的最近覆盖，避免基类钩子漏拦宿主协程的复写。
+     * setImageDrawable 同理：宿主可能直接设 Drawable 绕开 resId 路径，一并锁定。
      */
     private fun ensureModeIconSetterHooks(icon: ImageView?) {
         try {
-            var owner: Class<*>? = icon?.javaClass ?: return
-            val fallbackLoader = hostClassLoader ?: icon?.context?.classLoader ?: return
+            val start = icon?.javaClass ?: return
+            val loader = hostClassLoader ?: icon?.context?.classLoader ?: return
+            installNearestSetter(
+                start, loader,
+                "setImageResource", Int::class.javaPrimitiveType, ::installIconSetterHook
+            )
+            installNearestSetter(
+                start, loader,
+                "setImageDrawable", Drawable::class.java, ::installIconDrawableSetterHook
+            )
+        } catch (t: Throwable) {
+            AndroidLog.e(TAG, "strip F41 runtime icon hook failed: $t")
+        }
+    }
+
+    /**
+     * 沿继承链向上找最近的 setter 覆盖并安装钩子（找到即停，不含 ImageView 基类自身，
+     * 基类由 [hookModeIconStability] 另行安装）。
+     */
+    private fun installNearestSetter(
+        startClass: Class<*>,
+        loader: ClassLoader?,
+        methodName: String,
+        paramType: Class<*>?,
+        installer: (java.lang.reflect.Method, ClassLoader?, String) -> Unit
+    ) {
+        try {
+            val param = paramType ?: return
+            var owner: Class<*>? = startClass
             while (owner != null && ImageView::class.java.isAssignableFrom(owner)) {
                 val setter = runCatching {
-                    owner.getDeclaredMethod("setImageResource", Int::class.javaPrimitiveType)
+                    owner.getDeclaredMethod(methodName, param)
                 }.getOrNull()
                 if (setter != null) {
                     if (setter.declaringClass != ImageView::class.java) {
-                        installIconSetterHook(setter, fallbackLoader, "runtime:${owner.name}")
+                        installer(setter, loader, "runtime:${owner.name}")
                     }
                     return
                 }
@@ -3298,7 +3344,7 @@ internal object WeTypeClipboardSearchUi {
                 owner = owner.superclass
             }
         } catch (t: Throwable) {
-            AndroidLog.e(TAG, "strip F41 runtime icon hook failed: $t")
+            AndroidLog.e(TAG, "strip F41 nearest $methodName hook failed: $t")
         }
     }
 
@@ -3334,6 +3380,54 @@ internal object WeTypeClipboardSearchUi {
             }
         }
         AndroidLog.i(TAG, "strip F41 mode icon setter hook installed: ${method.declaringClass.name} ($source)")
+    }
+
+    /**
+     * setImageDrawable 旁路锁定：宿主协程若直接设 Drawable（不走 resId），
+     * 同样替换为搜索图标 Drawable 并同步外观；解析失败则放行，避免影响原生绘制。
+     */
+    private fun installIconDrawableSetterHook(
+        method: java.lang.reflect.Method,
+        fallbackLoader: ClassLoader?,
+        source: String
+    ) {
+        val key = "${method.declaringClass.name}#setImageDrawable(Landroid.graphics.drawable.Drawable)"
+        if (!f41IconSetterHooked.add(key)) return
+        method.isAccessible = true
+        method.hookBefore { param ->
+            try {
+                val iv = param.thisObject as? ImageView ?: return@hookBefore
+                if (!shouldLockModeIconTarget(iv)) return@hookBefore
+                val searchRes = resolveLockedSearchIconRes(iv, fallbackLoader) ?: return@hookBefore
+                val replacement = runCatching {
+                    iv.context.getDrawable(searchRes)
+                }.getOrNull() ?: runCatching {
+                    val loader = hostClassLoader ?: iv.context.classLoader ?: fallbackLoader
+                    ?: return@runCatching null
+                    val appCompatRes = Class.forName(
+                        "androidx.appcompat.content.res.AppCompatResources", false, loader
+                    )
+                    val get = appCompatRes.getDeclaredMethod(
+                        "getDrawable", android.content.Context::class.java, Int::class.javaPrimitiveType
+                    ).apply { isAccessible = true }
+                    get.invoke(null, iv.context, searchRes) as? Drawable
+                }.getOrNull() ?: return@hookBefore
+                param.args[0] = replacement
+                AndroidLog.i(TAG, "strip F41 icon [$source]: intercepted setImageDrawable (re-locked search icon)")
+            } catch (t: Throwable) {
+                AndroidLog.e(TAG, "strip F41 mode icon drawable hookBefore failed: $t")
+            }
+        }
+        method.hookAfter { param ->
+            try {
+                val iv = param.thisObject as? ImageView ?: return@hookAfter
+                if (!shouldLockModeIconTarget(iv)) return@hookAfter
+                syncModeIconAppearance(iv)
+            } catch (t: Throwable) {
+                AndroidLog.e(TAG, "strip F41 mode icon drawable hookAfter failed: $t")
+            }
+        }
+        AndroidLog.i(TAG, "strip F41 mode icon drawable setter hook installed: ${method.declaringClass.name} ($source)")
     }
 
     private fun shouldLockModeIconTarget(iv: ImageView): Boolean {

@@ -1,4 +1,8 @@
 @file:Suppress("UnstableApiUsage")
+
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -15,6 +19,12 @@ android {
         targetSdk = 37
         versionCode = 37
         versionName = "1.28.1"
+        buildConfigField(
+            "String",
+            "BUILD_TIME",
+            "\"" + LocalDateTime.now()
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")) + "\""
+        )
     }
 
     buildTypes {
@@ -22,6 +32,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles("proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     buildFeatures {
@@ -39,7 +50,7 @@ android {
         }
     }
     applicationVariants.all {
-        val outputFileName = "WeType_Enhance-${versionName}_${buildType.name}.apk"
+        val outputFileName = "WeType-3t-${versionName}_${buildType.name}.apk"
         outputs.all {
             val output = this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl
             output?.outputFileName = outputFileName
@@ -72,6 +83,8 @@ dependencies {
         exclude(group = "top.yukonga.miuix.kmp", module = "miuix-android")
     }
     implementation("io.github.kyant0:capsule:2.1.3")
+    // 底栏液态玻璃（Backdrop 液态玻璃，Apache-2.0）
+    implementation("io.github.kyant0:backdrop:2.0.1")
     implementation("org.luckypray:dexkit:2.2.0")
     // S2 剪贴板搜索：TinyPinyin 轻量拼音（不引 jieba；原坐标 com.github.promeg:tinypinyin:2.0.3 已不可用——见信箱说明，改用同源 MavenCentral 坐标）
     implementation("io.github.biezhi:TinyPinyin:2.0.3.RELEASE")

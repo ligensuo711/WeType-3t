@@ -4,7 +4,10 @@ import android.util.Log as AndroidLog
 import android.view.View
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
+import java.lang.reflect.Constructor
+import java.lang.reflect.Executable
 import java.lang.reflect.Field
+import java.lang.reflect.Member
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
 import java.util.Collections
@@ -161,31 +164,31 @@ object HookEnvironment {
     }
 
     internal fun registerHook(
-        method: Method,
+        executable: Executable,
         kind: String,
         hooker: XposedInterface.Hooker
     ): XposedInterface.HookHandle {
         val module = currentModule
-            ?: throw IllegalStateException("XposedModule is not attached before hooking ${method.name}")
-        val id = nextHookId(method, kind)
-        return module.hook(method)
+            ?: throw IllegalStateException("XposedModule is not attached before hooking ${executable.name}")
+        val id = nextHookId(executable, kind)
+        return module.hook(executable)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
             .setId(id)
             .intercept(hooker)
             .also(hookHandles::add)
     }
 
-    private fun nextHookId(method: Method, kind: String): String {
+    private fun nextHookId(executable: Executable, kind: String): String {
         val scope = currentScope.get().ifBlank { "global" }
         val executableKey = buildString {
-            append(method.declaringClass.name)
+            append(executable.declaringClass.name)
             append('#')
-            append(method.name)
+            append(executable.name)
             append('(')
-            append(method.parameterTypes.joinToString(",") { it.name })
+            append(executable.parameterTypes.joinToString(",") { it.name })
             append(')')
             append(':')
-            append(method.returnType.name)
+            append((executable as? Method)?.returnType?.name ?: "void")
         }
         val sequenceKey = "$scope|$kind|$executableKey"
         val sequence = synchronized(hookSequenceLock) {
@@ -299,7 +302,7 @@ fun Array<Class<*>>.sameAs(vararg types: Class<*>): Boolean {
 private object StaticHookThisObject
 
 class MethodHookParam internal constructor(
-    val method: Method,
+    val method: Member,
     thisObject: Any?,
     args: Array<Any?>,
     result: Any? = null
@@ -358,6 +361,29 @@ fun Method.hookAfter(callback: (MethodHookParam) -> Unit) {
         } catch (throwable: Throwable) {
             Log.e(throwable)
             originalResult
+        }
+    }
+}
+
+/**
+ * 构造器 after-hook：回调时实例已构造完成（`param.thisObject` 即新实例），
+ * 与 WeType-Tool 的气泡圆角实现同构（构造完成后改实例字段）。
+ */
+fun Constructor<*>.hookAfter(callback: (MethodHookParam) -> Unit) {
+    val constructor = this
+    HookEnvironment.registerHook(constructor, "after") { chain ->
+        chain.proceed()
+        val param = MethodHookParam(
+            method = constructor,
+            thisObject = chain.thisObject,
+            args = chain.args.toTypedArray()
+        )
+        try {
+            callback(param)
+            param.result
+        } catch (throwable: Throwable) {
+            Log.e(throwable)
+            param.result
         }
     }
 }

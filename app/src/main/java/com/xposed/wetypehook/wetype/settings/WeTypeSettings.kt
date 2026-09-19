@@ -38,6 +38,7 @@ object WeTypeSettings {
     private const val KEY_BLUR_RADIUS = "blur_radius"
     private const val KEY_CORNER_RADIUS = "corner_radius"
     private const val KEY_KEY_CORNER_RADIUS = "key_corner_radius"
+    private const val KEY_BUBBLE_ALPHA = "bubble_alpha"
     private const val KEY_EDGE_HIGHLIGHT_ENABLED = "edge_highlight_enabled"
     private const val KEY_EDGE_HIGHLIGHT_INTENSITY = "edge_highlight_intensity"
     private const val KEY_KEY_OPACITY = "key_opacity"
@@ -79,6 +80,104 @@ object WeTypeSettings {
     const val KEY_GESTURE_VIBRATION = "gesture_vibration"
     const val KEY_T9_GESTURE_VIBRATION = "t9_gesture_vibration"
     const val KEY_GESTURE_BINDINGS_JSON = "gesture_bindings_json"
+
+    // 设置 App 界面铬（纯 UI 层，不进入 Snapshot、不影响 Hook，各进程读写各自偏好）。
+    private const val KEY_LIQUID_GLASS_BOTTOM_BAR = "liquid_glass_bottom_bar"
+    const val DEFAULT_LIQUID_GLASS_BOTTOM_BAR = true
+    private const val KEY_APP_BLUR_ENABLED = "app_blur_enabled"
+    const val DEFAULT_APP_BLUR_ENABLED = true
+    private const val KEY_APP_FLOATING_BAR = "app_floating_bar"
+    const val DEFAULT_APP_FLOATING_BAR = true
+    private const val KEY_APP_THEME_MODE = "app_theme_mode"
+    const val APP_THEME_MODE_FOLLOW_SYSTEM = 0
+    const val APP_THEME_MODE_LIGHT = 1
+    const val APP_THEME_MODE_DARK = 2
+    const val DEFAULT_APP_THEME_MODE = APP_THEME_MODE_FOLLOW_SYSTEM
+    private const val KEY_APP_BOTTOM_BAR_HAPTIC = "app_bottom_bar_haptic"
+    const val DEFAULT_APP_BOTTOM_BAR_HAPTIC = true
+    private const val KEY_APP_TOP_BAR_PROGRESSIVE_BLUR = "app_top_bar_progressive_blur"
+    const val DEFAULT_APP_TOP_BAR_PROGRESSIVE_BLUR = true
+
+    fun isLiquidGlassBottomBar(context: Context): Boolean =
+        runCatching {
+            appPreferences(context).getBoolean(
+                KEY_LIQUID_GLASS_BOTTOM_BAR,
+                DEFAULT_LIQUID_GLASS_BOTTOM_BAR
+            )
+        }.getOrDefault(DEFAULT_LIQUID_GLASS_BOTTOM_BAR)
+
+    fun setLiquidGlassBottomBar(context: Context, enabled: Boolean) {
+        runCatching {
+            appPreferences(context).edit().putBoolean(KEY_LIQUID_GLASS_BOTTOM_BAR, enabled).apply()
+        }
+    }
+
+    fun isAppBlurEnabled(context: Context): Boolean =
+        runCatching {
+            appPreferences(context).getBoolean(KEY_APP_BLUR_ENABLED, DEFAULT_APP_BLUR_ENABLED)
+        }.getOrDefault(DEFAULT_APP_BLUR_ENABLED)
+
+    fun setAppBlurEnabled(context: Context, enabled: Boolean) {
+        runCatching {
+            appPreferences(context).edit().putBoolean(KEY_APP_BLUR_ENABLED, enabled).apply()
+        }
+    }
+
+    fun isAppFloatingBar(context: Context): Boolean =
+        runCatching {
+            appPreferences(context).getBoolean(KEY_APP_FLOATING_BAR, DEFAULT_APP_FLOATING_BAR)
+        }.getOrDefault(DEFAULT_APP_FLOATING_BAR)
+
+    fun setAppFloatingBar(context: Context, enabled: Boolean) {
+        runCatching {
+            appPreferences(context).edit().putBoolean(KEY_APP_FLOATING_BAR, enabled).apply()
+        }
+    }
+
+    fun getAppThemeMode(context: Context): Int =
+        runCatching {
+            appPreferences(context).getInt(KEY_APP_THEME_MODE, DEFAULT_APP_THEME_MODE)
+        }.getOrDefault(DEFAULT_APP_THEME_MODE).coerceIn(
+            APP_THEME_MODE_FOLLOW_SYSTEM,
+            APP_THEME_MODE_DARK
+        )
+
+    fun setAppThemeMode(context: Context, mode: Int) {
+        runCatching {
+            appPreferences(context).edit().putInt(
+                KEY_APP_THEME_MODE,
+                mode.coerceIn(APP_THEME_MODE_FOLLOW_SYSTEM, APP_THEME_MODE_DARK)
+            ).apply()
+        }
+    }
+
+    fun isBottomBarHaptic(context: Context): Boolean =
+        runCatching {
+            appPreferences(context).getBoolean(
+                KEY_APP_BOTTOM_BAR_HAPTIC,
+                DEFAULT_APP_BOTTOM_BAR_HAPTIC
+            )
+        }.getOrDefault(DEFAULT_APP_BOTTOM_BAR_HAPTIC)
+
+    fun setBottomBarHaptic(context: Context, enabled: Boolean) {
+        runCatching {
+            appPreferences(context).edit().putBoolean(KEY_APP_BOTTOM_BAR_HAPTIC, enabled).apply()
+        }
+    }
+
+    fun isTopBarProgressiveBlur(context: Context): Boolean =
+        runCatching {
+            appPreferences(context).getBoolean(
+                KEY_APP_TOP_BAR_PROGRESSIVE_BLUR,
+                DEFAULT_APP_TOP_BAR_PROGRESSIVE_BLUR
+            )
+        }.getOrDefault(DEFAULT_APP_TOP_BAR_PROGRESSIVE_BLUR)
+
+    fun setTopBarProgressiveBlur(context: Context, enabled: Boolean) {
+        runCatching {
+            appPreferences(context).edit().putBoolean(KEY_APP_TOP_BAR_PROGRESSIVE_BLUR, enabled).apply()
+        }
+    }
 
     const val DEFAULT_SHOW_CROSS_DEVICE_CLIPBOARD = true
     const val DEFAULT_REMOVE_CLIPBOARD_RETENTION_LIMIT = true
@@ -210,6 +309,7 @@ object WeTypeSettings {
     const val MAX_CORNER_RADIUS = DEFAULT_CORNER_RADIUS * 2
     const val DEFAULT_KEY_CORNER_RADIUS = 10
     const val MAX_KEY_CORNER_RADIUS = 40
+    const val DEFAULT_BUBBLE_ALPHA = 255
     const val DEFAULT_EDGE_HIGHLIGHT_ENABLED = true
     const val DEFAULT_EDGE_HIGHLIGHT_INTENSITY = 80
     const val DEFAULT_CANDIDATE_BACKGROUND_ALPHA = 150
@@ -261,6 +361,7 @@ object WeTypeSettings {
         val blurRadius: Int,
         val cornerRadius: Int,
         val keyCornerRadius: Int,
+        val bubbleAlpha: Int = DEFAULT_BUBBLE_ALPHA,
         val edgeHighlightEnabled: Boolean,
         val edgeHighlightIntensity: Int,
         val candidateBackgroundAlpha: Int,
@@ -670,6 +771,7 @@ object WeTypeSettings {
         blurRadius: Int,
         cornerRadius: Int,
         keyCornerRadius: Int,
+        bubbleAlpha: Int,
         edgeHighlightEnabled: Boolean,
         edgeHighlightIntensity: Int,
         candidateBackgroundAlpha: Int,
@@ -730,6 +832,7 @@ object WeTypeSettings {
             blurRadius = blurRadius,
             cornerRadius = cornerRadius,
             keyCornerRadius = keyCornerRadius,
+            bubbleAlpha = bubbleAlpha,
             edgeHighlightEnabled = edgeHighlightEnabled,
             edgeHighlightIntensity = edgeHighlightIntensity,
             candidateBackgroundAlpha = candidateBackgroundAlpha,
@@ -809,6 +912,7 @@ object WeTypeSettings {
             blurRadius = current.blurRadius,
             cornerRadius = current.cornerRadius,
             keyCornerRadius = current.keyCornerRadius,
+            bubbleAlpha = current.bubbleAlpha,
             edgeHighlightEnabled = current.edgeHighlightEnabled,
             edgeHighlightIntensity = current.edgeHighlightIntensity,
             candidateBackgroundAlpha = current.candidateBackgroundAlpha,
@@ -874,6 +978,8 @@ object WeTypeSettings {
     fun getCornerRadiusXposed(context: Context): Int = readSnapshotXposed().cornerRadius
 
     fun getKeyCornerRadiusXposed(): Int = readSnapshotXposed().keyCornerRadius
+
+    fun getBubbleAlphaXposed(): Int = readSnapshotXposed().bubbleAlpha
 
     fun isEdgeHighlightEnabledXposed(context: Context): Boolean =
         readSnapshotXposed().edgeHighlightEnabled
@@ -1011,6 +1117,7 @@ object WeTypeSettings {
         blurRadius: Int,
         cornerRadius: Int,
         keyCornerRadius: Int,
+        bubbleAlpha: Int,
         edgeHighlightEnabled: Boolean,
         edgeHighlightIntensity: Int,
         candidateBackgroundAlpha: Int,
@@ -1067,6 +1174,7 @@ object WeTypeSettings {
             blurRadius = blurRadius.coerceIn(0, 100),
             cornerRadius = cornerRadius.coerceIn(0, MAX_CORNER_RADIUS),
             keyCornerRadius = keyCornerRadius.coerceIn(0, MAX_KEY_CORNER_RADIUS),
+            bubbleAlpha = bubbleAlpha.coerceIn(0, 255),
             edgeHighlightEnabled = edgeHighlightEnabled,
             edgeHighlightIntensity = edgeHighlightIntensity.coerceIn(0, 200),
             candidateBackgroundAlpha = candidateBackgroundAlpha.coerceIn(0, 255),
@@ -1169,6 +1277,7 @@ object WeTypeSettings {
             .putInt(KEY_BLUR_RADIUS, snapshot.blurRadius)
             .putInt(KEY_CORNER_RADIUS, snapshot.cornerRadius)
             .putInt(KEY_KEY_CORNER_RADIUS, snapshot.keyCornerRadius)
+            .putInt(KEY_BUBBLE_ALPHA, snapshot.bubbleAlpha)
             .putBoolean(KEY_EDGE_HIGHLIGHT_ENABLED, snapshot.edgeHighlightEnabled)
             .putInt(KEY_EDGE_HIGHLIGHT_INTENSITY, snapshot.edgeHighlightIntensity)
             .putInt(KEY_CANDIDATE_BACKGROUND_ALPHA, snapshot.candidateBackgroundAlpha)
@@ -1357,6 +1466,7 @@ object WeTypeSettings {
         putInt(KEY_BLUR_RADIUS, blurRadius)
         putInt(KEY_CORNER_RADIUS, cornerRadius)
         putInt(KEY_KEY_CORNER_RADIUS, keyCornerRadius)
+        putInt(KEY_BUBBLE_ALPHA, bubbleAlpha)
         putBoolean(KEY_EDGE_HIGHLIGHT_ENABLED, edgeHighlightEnabled)
         putInt(KEY_EDGE_HIGHLIGHT_INTENSITY, edgeHighlightIntensity)
         putInt(KEY_CANDIDATE_BACKGROUND_ALPHA, candidateBackgroundAlpha)
@@ -1435,6 +1545,7 @@ object WeTypeSettings {
                 .coerceIn(0, MAX_CORNER_RADIUS),
             keyCornerRadius = getInt(KEY_KEY_CORNER_RADIUS, defaults.keyCornerRadius)
                 .coerceIn(0, MAX_KEY_CORNER_RADIUS),
+            bubbleAlpha = getInt(KEY_BUBBLE_ALPHA, defaults.bubbleAlpha).coerceIn(0, 255),
             edgeHighlightEnabled = getBoolean(
                 KEY_EDGE_HIGHLIGHT_ENABLED,
                 defaults.edgeHighlightEnabled
@@ -1568,6 +1679,7 @@ object WeTypeSettings {
                 .coerceIn(0, MAX_CORNER_RADIUS),
             keyCornerRadius = getInt(KEY_KEY_CORNER_RADIUS, DEFAULT_KEY_CORNER_RADIUS)
                 .coerceIn(0, MAX_KEY_CORNER_RADIUS),
+            bubbleAlpha = getInt(KEY_BUBBLE_ALPHA, DEFAULT_BUBBLE_ALPHA).coerceIn(0, 255),
             edgeHighlightEnabled = getBoolean(
                 KEY_EDGE_HIGHLIGHT_ENABLED,
                 DEFAULT_EDGE_HIGHLIGHT_ENABLED
@@ -1697,6 +1809,7 @@ object WeTypeSettings {
         blurRadius = DEFAULT_BLUR_RADIUS,
         cornerRadius = DEFAULT_CORNER_RADIUS,
         keyCornerRadius = DEFAULT_KEY_CORNER_RADIUS,
+        bubbleAlpha = DEFAULT_BUBBLE_ALPHA,
         edgeHighlightEnabled = DEFAULT_EDGE_HIGHLIGHT_ENABLED,
         edgeHighlightIntensity = DEFAULT_EDGE_HIGHLIGHT_INTENSITY,
         candidateBackgroundAlpha = DEFAULT_CANDIDATE_BACKGROUND_ALPHA,
@@ -1751,6 +1864,7 @@ object WeTypeSettings {
             contains(KEY_BLUR_RADIUS) ||
             contains(KEY_CORNER_RADIUS) ||
             contains(KEY_KEY_CORNER_RADIUS) ||
+            contains(KEY_BUBBLE_ALPHA) ||
             contains(KEY_EDGE_HIGHLIGHT_ENABLED) ||
             contains(KEY_EDGE_HIGHLIGHT_INTENSITY) ||
             contains(KEY_KEY_OPACITY) ||

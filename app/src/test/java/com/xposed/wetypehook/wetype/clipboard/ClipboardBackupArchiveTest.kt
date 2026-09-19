@@ -16,7 +16,7 @@ class ClipboardBackupArchiveTest {
             .toInstant()
             .toEpochMilli()
         assertEquals(
-            "WeTypeEnhance-clipboard-20260912-221530.zip",
+            "WeType-3t-clipboard-20260912-221530.zip",
             ClipboardBackupArchive.buildFileName(timestamp)
         )
     }
@@ -85,7 +85,7 @@ class ClipboardBackupArchiveTest {
     @Test
     fun manifestAllowsFutureFormatVersionButParsesIt() {
         val parsed = ClipboardBackupArchive.parseManifest(
-            """{"generator":"WeType-Enhance","formatVersion":99,"exportedAt":5,"textCount":1,"imageCount":0,"skippedRemoteImages":0}"""
+            """{"generator":"WeType-3t","formatVersion":99,"exportedAt":5,"textCount":1,"imageCount":0,"skippedRemoteImages":0}"""
         )
         assertEquals(99, parsed?.formatVersion)
     }

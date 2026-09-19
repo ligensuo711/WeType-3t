@@ -13,6 +13,7 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
+import com.xposed.wetypehook.wetype.hook.WeTypeClipboardImageHost
 import com.xposed.wetypehook.xposed.Log
 import java.lang.ref.WeakReference
 import java.lang.reflect.Field
@@ -363,9 +364,26 @@ object GestureActionExecutor {
     }
 
     /**
-     * 键盘面板拉起 (剪贴板 panelId=4, 常用语 panelId=8, 找字)
+     * 键盘面板拉起 (剪贴板/常用语走宿主原生导航，找字走旧面板控制器兜底)
      */
     private fun handleOpenPanel(view: View, action: GestureAction) {
+        // 优先走宿主原生导航 N.n3/p3/k3(CustomPhraseAndClipboard, Bundle{target_tab_index})，
+        // 与剪贴板搜索/图片预览回跳同契约；旧 findPanelController 在现版本根本找不到控制器。
+        if (action == GestureAction.OpenClipboard) {
+            if (WeTypeClipboardImageHost.openClipboardPanel()) {
+                Log.i("[$TAG] Opened clipboard via native navigation")
+                return
+            }
+            Log.e("[$TAG] Native clipboard navigation unavailable, trying legacy controller")
+        }
+        if (action == GestureAction.OpenQuickPhrase) {
+            if (WeTypeClipboardImageHost.openCustomPhrasePanel()) {
+                Log.i("[$TAG] Opened quick phrase via native navigation")
+                return
+            }
+            Log.e("[$TAG] Native quick phrase navigation unavailable, trying legacy controller")
+        }
+
         val targetPanelId = when (action) {
             GestureAction.OpenClipboard -> 4
             GestureAction.OpenQuickPhrase -> 8
@@ -381,7 +399,7 @@ object GestureActionExecutor {
                 invokeShowPanel(panelController, view, targetPanelId)
                 Log.i("[$TAG] Opened panel $targetPanelId via controller")
             } else {
-                Log.i("[$TAG] Panel controller not found, attempting fallback")
+                Log.e("[$TAG] Panel controller not found and no native channel for $action")
             }
         }.onFailure {
             Log.e("[$TAG] Failed to open panel: ${it.message}")
