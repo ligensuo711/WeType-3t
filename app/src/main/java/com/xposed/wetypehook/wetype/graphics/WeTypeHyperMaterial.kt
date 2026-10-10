@@ -24,7 +24,9 @@ import java.lang.reflect.Method
 internal class WeTypeHyperMaterial(
     private val view: View,
     overrides: GlassMaterialOverrides = GlassMaterialOverrides(),
-    private val sampleBehindWindow: Boolean = true
+    private val sampleBehindWindow: Boolean = true,
+    private val shadowEnabled: Boolean = true,
+    private val transparentStart: Boolean = false
 ) {
     private val overrides = overrides.forLiquidGlass()
     private data class MaterialStyle(val isDark: Boolean, val density: Float, val tintColor: Int?)
@@ -63,7 +65,11 @@ internal class WeTypeHyperMaterial(
         return runCatching {
             val api = checkNotNull(api)
             materialViews.forEach { materialView ->
-                materialView.setBackgroundColor(if (supportsOffScreenFill) Color.TRANSPARENT else fallbackColor(isDark))
+                materialView.setBackgroundColor(when {
+                    supportsOffScreenFill -> Color.TRANSPARENT
+                    transparentStart -> if (isDark) 0x01000000 else 0x01FFFFFF
+                    else -> fallbackColor(isDark)
+                })
                 api.setPassWindowBlurEnabled(materialView, sampleBehindWindow)
                 if (supportsOffScreenFill) api.call(materialView, "setMiBlurWinType", 65536)
                 // keyboard/frosted, token version 30: background mode 1, view mode 1,
@@ -125,6 +131,7 @@ internal class WeTypeHyperMaterial(
         if (view.width <= 0 || view.height <= 0) return
         runCatching {
             updateGlassGeometry(cornerRadii)
+            if (!shadowEnabled) return
             val effectView = shadowView ?: View(view.context).apply {
                 setBackgroundColor(Color.TRANSPARENT)
                 isClickable = false

@@ -38,7 +38,7 @@ class HostPreferencesFileTest {
         assertEquals(60, reader.read()["blur_radius"])
         val replacement = temporaryFolder.newFile("replacement.xml")
         replacement.writeText("""<map><int name="blur_radius" value="20" /></map>""")
-        check(replacement.renameTo(file))
+        java.nio.file.Files.move(replacement.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
         assertEquals(20, reader.read()["blur_radius"])
     }
 

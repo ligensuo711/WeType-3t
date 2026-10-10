@@ -28,6 +28,7 @@ import com.xposed.wetypehook.wetype.hook.WeTypeKeyLabelHooks
 import com.xposed.wetypehook.wetype.hook.WeTypeResourceHooks
 import com.xposed.wetypehook.wetype.hook.WeTypeUpdateHooks
 import com.xposed.wetypehook.wetype.hook.WeTypeWindowHooks
+import com.xposed.wetypehook.wetype.hook.WeTypeMiuiPhraseHooks
 import com.xposed.wetypehook.wetype.settings.WeTypeSettings
 import com.xposed.wetypehook.xposed.HookEnvironment
 import com.xposed.wetypehook.xposed.Log
@@ -187,12 +188,15 @@ class MainHook : XposedModule() {
 
         val hostClean = WeTypeHostLauncher.prepareForHotReload()
         val windowClean = WeTypeWindowHooks.prepareForHotReload()
+        val phraseClean = runOnMainThreadBlocking {
+            WeTypeMiuiPhraseHooks.prepareForHotReload()
+        }
         val resourcesClean = runOnMainThreadBlocking {
             WeTypeResourceHooks.prepareForHotReload()
         }
         val mainClean = cleanupExternalState()
         WeTypeSettings.prepareForHotReload()
-        if (!hostClean || !windowClean || !resourcesClean || !mainClean) {
+        if (!hostClean || !windowClean || !phraseClean || !resourcesClean || !mainClean) {
             Log.e("Reject hot reload because target-process callbacks could not be fully cleaned")
             return false
         }
@@ -355,7 +359,7 @@ class MainHook : XposedModule() {
                         targetClassLoader.invokeMethodAs<Any?>("addDexPath", dexPath)
                     }
                     HookEnvironment.withHookScope("miui.dynamic-bottom") {
-                        installBottomManagerHooks(targetClassLoader, isNonCustomize)
+                        installBottomManagerHooks(targetClassLoader, isNonCustomize, dexPath)
                     }
                     param.result = null
                 }.onFailure {
@@ -374,7 +378,10 @@ class MainHook : XposedModule() {
             Class.forName(INPUT_METHOD_BOTTOM_MANAGER, true, classLoader)
         }.isSuccess
 
-    private fun installBottomManagerHooks(classLoader: ClassLoader, isNonCustomize: Boolean) {
+    private fun installBottomManagerHooks(classLoader: ClassLoader, isNonCustomize: Boolean, dexPath: String? = null) {
+        HookEnvironment.withHookScope("miui.phrase-glass") {
+            WeTypeMiuiPhraseHooks.install(classLoader, dexPath)
+        }
         hookDeleteNotSupportIme(
             "$INPUT_METHOD_BOTTOM_MANAGER\$MiuiSwitchInputMethodListener",
             classLoader
@@ -1175,7 +1182,9 @@ class MainHook : XposedModule() {
         val bottomManagerClasses = oldHookHandles.mapNotNull { handle ->
             val declaringClass = runCatching { handle.executable.declaringClass }.getOrNull()
                 ?: return@mapNotNull null
-            if (!declaringClass.name.startsWith(INPUT_METHOD_BOTTOM_MANAGER)) return@mapNotNull null
+            val isPhrasePopup = declaringClass != android.widget.PopupWindow::class.java &&
+                android.widget.PopupWindow::class.java.isAssignableFrom(declaringClass)
+            if (!declaringClass.name.startsWith(INPUT_METHOD_BOTTOM_MANAGER) && !isPhrasePopup) return@mapNotNull null
             declaringClass
         }.distinctBy { clazz -> System.identityHashCode(clazz.classLoader) }
         bottomManagerClasses.forEach { bottomManagerClass ->
@@ -1184,7 +1193,7 @@ class MainHook : XposedModule() {
                 installBottomManagerHooks(classLoader, isNonCustomize)
             }
         }
-        return if (isNonCustomize) bottomManagerClasses else emptyList()
+        return if (isNonCustomize) bottomManagerClasses.filter { it.name.startsWith(INPUT_METHOD_BOTTOM_MANAGER) } else emptyList()
     }
 
     /**

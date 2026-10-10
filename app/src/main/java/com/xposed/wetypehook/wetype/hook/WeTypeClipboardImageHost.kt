@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap
  * - 尺寸换算类 3.5.3=`...utils.m1`、3.5.4=`...utils.n1`（实例单例 + l0(Integer)）；
  *   原始设计 px 换算 3.5.3=`...utils.q1.e0`、3.5.4=`...utils.r1.e0`（静态）；
  * - 面板枚举二进制名一致 `...keyboard.t`（含 ImagePreview(509)）；
- * - S33 导航：优先 n3(enum, Bundle)，3.5.3 退 p3/k3，均为 (面板枚举, Bundle) -> void。
+ * - S33 导航：3.5.4 为 o3(enum, Bundle)，3.5.3 为 p3/k3，均为 (面板枚举, Bundle) -> void。
  */
 internal object WeTypeClipboardImageHost {
 
@@ -307,7 +307,7 @@ internal object WeTypeClipboardImageHost {
         }
         val n = runCatching { Class.forName(N_CLASS, false, classLoader) }.getOrNull() ?: return
         navManager = staticSelfInstance(n)
-        val candidates = arrayOf("n3", "p3", "k3", "l3")
+        val candidates = arrayOf("o3", "n3", "p3", "k3", "l3")
         for (name in candidates) {
             val m = n.declaredMethods.firstOrNull {
                 it.name == name && it.parameterTypes.size == 2 &&
@@ -319,7 +319,21 @@ internal object WeTypeClipboardImageHost {
             break
         }
         if (navMethod == null) {
-            AndroidLog.e(TAG, "S33 navigation method missing (n3/p3/k3)")
+            // 特征自适应兜底：按参数签名自动发现 (panelEnum, Bundle) -> void
+            val m = n.declaredMethods.firstOrNull {
+                it.parameterTypes.size == 2 &&
+                    it.parameterTypes[0] == panel &&
+                    it.parameterTypes[1] == Bundle::class.java &&
+                    it.returnType == Void.TYPE
+            }
+            if (m != null) {
+                m.isAccessible = true
+                navMethod = m
+                AndroidLog.i(TAG, "Auto-discovered navigation method: ${m.name}")
+            }
+        }
+        if (navMethod == null) {
+            AndroidLog.e(TAG, "S33 navigation method missing")
         }
     }
 

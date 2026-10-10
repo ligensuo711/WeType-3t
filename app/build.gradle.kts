@@ -1,13 +1,28 @@
 @file:Suppress("UnstableApiUsage")
 
+import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.Properties
 
 plugins {
     id("com.android.application")
     id("kotlin-android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+// 正式签名：读取项目根目录 keystore.properties（已 gitignore，不提交）。
+// 多电脑开发：每台电脑各放一份该文件，storeFile 指向本机 .jks 路径即可；
+// 没有该文件的电脑自动回退为 debug 签名，保证照常编译。
+val keystoreProps = Properties().apply {
+    rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
+}
+fun releaseKeystoreFile(): File? {
+    val p: String = keystoreProps.getProperty("storeFile") ?: return null
+    val f: File = File(p).takeIf { it.isAbsolute } ?: rootProject.file(p)
+    return f.takeIf { it.exists() }
+}
+val hasReleaseKey = releaseKeystoreFile() != null
 
 android {
     compileSdk = 37
@@ -17,8 +32,8 @@ android {
         applicationId = "com.xposed.wetypehook"
         minSdk = 31
         targetSdk = 37
-        versionCode = 37
-        versionName = "1.28.1"
+        versionCode = 38
+        versionName = "1.28.2"
         buildConfigField(
             "String",
             "BUILD_TIME",
@@ -27,12 +42,29 @@ android {
         )
     }
 
+    signingConfigs {
+        create("release") {
+            if (hasReleaseKey) {
+                storeFile = releaseKeystoreFile()
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            } else {
+                // 无正式密钥时回退 debug 签名，仅保证可编译
+                val debug = getByName("debug")
+                storeFile = debug.storeFile
+                storePassword = debug.storePassword
+                keyAlias = debug.keyAlias
+                keyPassword = debug.keyPassword
+            }
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles("proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     buildFeatures {

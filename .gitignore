@@ -14,9 +14,18 @@ local.properties
 *.log
 /wetype_work_space
 *.apk
+# 正式签名：密钥文件与密码配置永不提交（多电脑开发时每台电脑各放一份 keystore.properties）
+keystore.properties
+*.jks
+*.keystore
 original/
 output/
 work/
 .paseo/
 artifacts/
 tools/
+# 临时解包产物（构建用的真实副本在 app/src/main/resources/META-INF）
+/META-INF/
+/classes.dex
+/AndroidManifest.xml
+__pycache__/

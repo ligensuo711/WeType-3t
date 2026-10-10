@@ -284,6 +284,9 @@ private fun WeTypeSettingsScreen(
     var disableHotUpdate by rememberSaveable {
         mutableStateOf(snapshot.disableHotUpdate)
     }
+    var miuiClipboardGlass by rememberSaveable {
+        mutableStateOf(snapshot.miuiClipboardGlass)
+    }
     var showCrossDeviceClipboard by rememberSaveable {
         mutableStateOf(snapshot.showCrossDeviceClipboard)
     }
@@ -533,6 +536,7 @@ private fun WeTypeSettingsScreen(
             toolbarIconBgOpacity = toolbarIconBgOpacity,
             appearanceColors = currentAppearanceColors(),
             disableHotUpdate = disableHotUpdate,
+            miuiClipboardGlass = miuiClipboardGlass,
             showCrossDeviceClipboard = showCrossDeviceClipboard,
             removeClipboardRetentionLimit = removeClipboardRetentionLimit,
             removeClipboardTextLimit = removeClipboardTextLimit,
@@ -601,6 +605,7 @@ private fun WeTypeSettingsScreen(
         candidatePinyinLeftMarginDp = WeTypeSettings.DEFAULT_CANDIDATE_PINYIN_LEFT_MARGIN_DP.toString()
         toolbarIconBgOpacity = WeTypeSettings.DEFAULT_TOOLBAR_ICON_BG_OPACITY
         disableHotUpdate = WeTypeSettings.DEFAULT_DISABLE_HOT_UPDATE
+        miuiClipboardGlass = WeTypeSettings.DEFAULT_MIUI_CLIPBOARD_GLASS
         showCrossDeviceClipboard = WeTypeSettings.DEFAULT_SHOW_CROSS_DEVICE_CLIPBOARD
         removeClipboardRetentionLimit = WeTypeSettings.DEFAULT_REMOVE_CLIPBOARD_RETENTION_LIMIT
         removeClipboardTextLimit = WeTypeSettings.DEFAULT_REMOVE_CLIPBOARD_TEXT_LIMIT
@@ -698,6 +703,8 @@ private fun WeTypeSettingsScreen(
             onResetFont = {
                 fontMode = WeTypeSettings.DEFAULT_FONT_MODE
             },
+            miuiClipboardGlass = miuiClipboardGlass,
+            onMiuiClipboardGlassChange = { miuiClipboardGlass = it },
             showCrossDeviceClipboard = showCrossDeviceClipboard,
             onShowCrossDeviceClipboardChange = { showCrossDeviceClipboard = it },
             removeClipboardRetentionLimit = removeClipboardRetentionLimit,
@@ -768,6 +775,7 @@ private fun WeTypeSettingsScreen(
         detailRoute == "appearance" -> "界面美化"
         detailRoute == "font" -> "字体替换"
         detailRoute == "logo" -> "键盘 Logo"
+        detailRoute == "configexport" -> "配置导出"
         bottomTab == 0 -> "首页"
         bottomTab == 1 -> "功能"
         bottomTab == 2 -> "美化"
@@ -1078,10 +1086,18 @@ private fun WeTypeSettingsScreen(
                                     summary = "外观模式、悬浮底栏、顶栏渐进模糊与触觉反馈",
                                     onClick = { detailRoute = "theme" }
                                 )
+                                ArrowPreference(
+                                    title = "配置导出",
+                                    summary = "导出 / 导入全部模块设置",
+                                    onClick = { detailRoute = "configexport" }
+                                )
                             }
                         }
                     }
                     FeatureSections(setOf("protection", "about"))
+                }
+                "configexport" -> {
+                    ConfigExportItems(preferencesContext)
                 }
                 "theme" -> {
                     item {
@@ -2899,6 +2915,8 @@ private fun LazyListScope.FeatureTabContent(
     fontMode: Int,
     onFontModeChange: (Int) -> Unit,
     onResetFont: () -> Unit,
+    miuiClipboardGlass: Boolean,
+    onMiuiClipboardGlassChange: (Boolean) -> Unit,
     showCrossDeviceClipboard: Boolean,
     onShowCrossDeviceClipboardChange: (Boolean) -> Unit,
     removeClipboardRetentionLimit: Boolean,
@@ -3056,6 +3074,12 @@ private fun LazyListScope.FeatureTabContent(
             insideMargin = PaddingValues(0.dp)
         ) {
             Column {
+                MiuixSwitchWidget(
+                    title = "小米剪贴板与常用语液态玻璃",
+                    description = "为小米底栏唤起的原生剪切板及常用语面板应用液态玻璃材质与高斯模糊",
+                    checked = miuiClipboardGlass,
+                    onCheckedChange = onMiuiClipboardGlassChange
+                )
                 MiuixSwitchWidget(
                     title = "跨设备条目可见化持久保存",
                     description = "自动将多端同步的剪贴板远程条目转换为本地可见条目保存",

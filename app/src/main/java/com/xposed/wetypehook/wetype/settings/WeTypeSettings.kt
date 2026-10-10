@@ -62,6 +62,7 @@ object WeTypeSettings {
     const val KEY_CLIPBOARD_IMAGE_UNIFORM_ROW_HEIGHT = "clipboard_image_uniform_row_height"
     const val KEY_CLIPBOARD_IMAGE_MAX_COUNT = "clipboard_image_max_count"
     const val KEY_CLIPBOARD_IMAGE_MAX_SIZE_MB = "clipboard_image_max_size_mb"
+    const val KEY_MIUI_CLIPBOARD_GLASS = "miui_clipboard_glass"
 
     // 剪贴板备份与恢复（独立读写，不进入 Snapshot）。
     const val KEY_BACKUP_LOCAL_FOLDER_URI = "clipboard_backup_local_folder_uri"
@@ -179,6 +180,7 @@ object WeTypeSettings {
         }
     }
 
+    const val DEFAULT_MIUI_CLIPBOARD_GLASS = true
     const val DEFAULT_SHOW_CROSS_DEVICE_CLIPBOARD = true
     const val DEFAULT_REMOVE_CLIPBOARD_RETENTION_LIMIT = true
     const val DEFAULT_REMOVE_CLIPBOARD_TEXT_LIMIT = true
@@ -371,6 +373,7 @@ object WeTypeSettings {
         val appearanceColors: Map<String, Int>,
         val toolbarIconBgOpacity: Int,
         val disableHotUpdate: Boolean,
+        val miuiClipboardGlass: Boolean = DEFAULT_MIUI_CLIPBOARD_GLASS,
         val showCrossDeviceClipboard: Boolean = DEFAULT_SHOW_CROSS_DEVICE_CLIPBOARD,
         val removeClipboardRetentionLimit: Boolean = DEFAULT_REMOVE_CLIPBOARD_RETENTION_LIMIT,
         val removeClipboardTextLimit: Boolean = DEFAULT_REMOVE_CLIPBOARD_TEXT_LIMIT,
@@ -412,6 +415,7 @@ object WeTypeSettings {
         val glassOverrides: GlassMaterialOverrides = GlassMaterialOverrides()
     )
 
+    fun isMiuiClipboardGlass(context: Context): Boolean = readSnapshot(context).miuiClipboardGlass
     fun isShowCrossDeviceClipboard(context: Context): Boolean = readSnapshot(context).showCrossDeviceClipboard
     fun isRemoveClipboardRetentionLimit(context: Context): Boolean = readSnapshot(context).removeClipboardRetentionLimit
     fun isRemoveClipboardTextLimit(context: Context): Boolean = readSnapshot(context).removeClipboardTextLimit
@@ -781,6 +785,7 @@ object WeTypeSettings {
         toolbarIconBgOpacity: Int,
         appearanceColors: Map<String, Int>,
         disableHotUpdate: Boolean = DEFAULT_DISABLE_HOT_UPDATE,
+        miuiClipboardGlass: Boolean = DEFAULT_MIUI_CLIPBOARD_GLASS,
         showCrossDeviceClipboard: Boolean = DEFAULT_SHOW_CROSS_DEVICE_CLIPBOARD,
         removeClipboardRetentionLimit: Boolean = DEFAULT_REMOVE_CLIPBOARD_RETENTION_LIMIT,
         removeClipboardTextLimit: Boolean = DEFAULT_REMOVE_CLIPBOARD_TEXT_LIMIT,
@@ -842,6 +847,7 @@ object WeTypeSettings {
             toolbarIconBgOpacity = toolbarIconBgOpacity,
             appearanceColors = sanitizedAppearanceColors,
             disableHotUpdate = disableHotUpdate,
+            miuiClipboardGlass = miuiClipboardGlass,
             showCrossDeviceClipboard = showCrossDeviceClipboard,
             removeClipboardRetentionLimit = removeClipboardRetentionLimit,
             removeClipboardTextLimit = removeClipboardTextLimit,
@@ -1127,6 +1133,7 @@ object WeTypeSettings {
         toolbarIconBgOpacity: Int,
         appearanceColors: Map<String, Int>,
         disableHotUpdate: Boolean,
+        miuiClipboardGlass: Boolean = DEFAULT_MIUI_CLIPBOARD_GLASS,
         showCrossDeviceClipboard: Boolean = DEFAULT_SHOW_CROSS_DEVICE_CLIPBOARD,
         removeClipboardRetentionLimit: Boolean = DEFAULT_REMOVE_CLIPBOARD_RETENTION_LIMIT,
         removeClipboardTextLimit: Boolean = DEFAULT_REMOVE_CLIPBOARD_TEXT_LIMIT,
@@ -1189,6 +1196,7 @@ object WeTypeSettings {
                 group.id to (appearanceColors[group.id] ?: group.defaultColor)
             },
             disableHotUpdate = disableHotUpdate,
+            miuiClipboardGlass = miuiClipboardGlass,
             showCrossDeviceClipboard = showCrossDeviceClipboard,
             removeClipboardRetentionLimit = removeClipboardRetentionLimit,
             removeClipboardTextLimit = removeClipboardTextLimit,
@@ -1293,6 +1301,7 @@ object WeTypeSettings {
             .putInt(KEY_TOOLBAR_ICON_BG_OPACITY, snapshot.toolbarIconBgOpacity)
             .putBoolean(KEY_HYPER_MATERIAL_ENABLED, snapshot.hyperMaterialEnabled)
             .putBoolean(KEY_DISABLE_HOT_UPDATE, snapshot.disableHotUpdate)
+            .putBoolean(KEY_MIUI_CLIPBOARD_GLASS, snapshot.miuiClipboardGlass)
             .putBoolean(KEY_SHOW_CROSS_DEVICE_CLIPBOARD, snapshot.showCrossDeviceClipboard)
             .putBoolean(KEY_REMOVE_CLIPBOARD_RETENTION_LIMIT, snapshot.removeClipboardRetentionLimit)
             .putBoolean(KEY_REMOVE_CLIPBOARD_TEXT_LIMIT, snapshot.removeClipboardTextLimit)
@@ -1475,6 +1484,7 @@ object WeTypeSettings {
         putInt(KEY_CANDIDATE_PINYIN_LEFT_MARGIN_DP, candidatePinyinLeftMarginDp)
         putInt(KEY_TOOLBAR_ICON_BG_OPACITY, toolbarIconBgOpacity)
         putBoolean(KEY_DISABLE_HOT_UPDATE, disableHotUpdate)
+        putBoolean(KEY_MIUI_CLIPBOARD_GLASS, miuiClipboardGlass)
         putBoolean(KEY_SHOW_CROSS_DEVICE_CLIPBOARD, showCrossDeviceClipboard)
         putBoolean(KEY_REMOVE_CLIPBOARD_RETENTION_LIMIT, removeClipboardRetentionLimit)
         putBoolean(KEY_REMOVE_CLIPBOARD_TEXT_LIMIT, removeClipboardTextLimit)
@@ -1585,6 +1595,7 @@ object WeTypeSettings {
                 defaults.toolbarIconBgOpacity
             ).coerceIn(0, 255),
             disableHotUpdate = getBoolean(KEY_DISABLE_HOT_UPDATE, defaults.disableHotUpdate),
+            miuiClipboardGlass = getBoolean(KEY_MIUI_CLIPBOARD_GLASS, defaults.miuiClipboardGlass),
             showCrossDeviceClipboard = getBoolean(KEY_SHOW_CROSS_DEVICE_CLIPBOARD, defaults.showCrossDeviceClipboard),
             removeClipboardRetentionLimit = getBoolean(KEY_REMOVE_CLIPBOARD_RETENTION_LIMIT, defaults.removeClipboardRetentionLimit),
             removeClipboardTextLimit = getBoolean(KEY_REMOVE_CLIPBOARD_TEXT_LIMIT, defaults.removeClipboardTextLimit),
@@ -1716,6 +1727,7 @@ object WeTypeSettings {
                 group.id to migrateLegacyKeyOpacity(group, color, legacyKeyOpacity)
             },
             disableHotUpdate = getBoolean(KEY_DISABLE_HOT_UPDATE, DEFAULT_DISABLE_HOT_UPDATE),
+            miuiClipboardGlass = getBoolean(KEY_MIUI_CLIPBOARD_GLASS, DEFAULT_MIUI_CLIPBOARD_GLASS),
             showCrossDeviceClipboard = getBoolean(KEY_SHOW_CROSS_DEVICE_CLIPBOARD, DEFAULT_SHOW_CROSS_DEVICE_CLIPBOARD),
             removeClipboardRetentionLimit = getBoolean(KEY_REMOVE_CLIPBOARD_RETENTION_LIMIT, DEFAULT_REMOVE_CLIPBOARD_RETENTION_LIMIT),
             removeClipboardTextLimit = getBoolean(KEY_REMOVE_CLIPBOARD_TEXT_LIMIT, DEFAULT_REMOVE_CLIPBOARD_TEXT_LIMIT),
@@ -1819,6 +1831,7 @@ object WeTypeSettings {
         toolbarIconBgOpacity = DEFAULT_TOOLBAR_ICON_BG_OPACITY,
         appearanceColors = WeTypeAppearanceColorGroups.defaultColors(),
         disableHotUpdate = DEFAULT_DISABLE_HOT_UPDATE,
+        miuiClipboardGlass = DEFAULT_MIUI_CLIPBOARD_GLASS,
         showCrossDeviceClipboard = DEFAULT_SHOW_CROSS_DEVICE_CLIPBOARD,
         removeClipboardRetentionLimit = DEFAULT_REMOVE_CLIPBOARD_RETENTION_LIMIT,
         removeClipboardTextLimit = DEFAULT_REMOVE_CLIPBOARD_TEXT_LIMIT,
@@ -1874,6 +1887,7 @@ object WeTypeSettings {
             contains(KEY_CANDIDATE_PINYIN_LEFT_MARGIN_DP) ||
             contains(KEY_TOOLBAR_ICON_BG_OPACITY) ||
             contains(KEY_DISABLE_HOT_UPDATE) ||
+            contains(KEY_MIUI_CLIPBOARD_GLASS) ||
             contains(KEY_SHOW_CROSS_DEVICE_CLIPBOARD) ||
             contains(KEY_REMOVE_CLIPBOARD_RETENTION_LIMIT) ||
             contains(KEY_REMOVE_CLIPBOARD_TEXT_LIMIT) ||

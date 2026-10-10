@@ -138,6 +138,30 @@ internal object WeTypeWindowHooks {
     )
 
     private val weTypeWindowStates = WeakHashMap<Any, WeTypeWindowState>()
+
+    /** Reveal the configured IME background, including its non-native blur mode. */
+    fun hasAppearanceUnderlay(service: InputMethodService, content: View): Boolean {
+        val decor = service.window?.window?.decorView ?: return false
+        val states = synchronized(weTypeWindowStates) { weTypeWindowStates.values.toList() }
+        val state = synchronized(weTypeWindowStates) { weTypeWindowStates[service] }
+            ?: states.firstOrNull { it.backgroundDecorView?.get() === decor }
+        val carrier = state?.backgroundCarrier
+        Log.i("MIUI underlay: states=${states.size}, state=${state != null}, native=${state?.backgroundStyle?.hyperMaterialEnabled}, glass=${state?.carrierOverrides?.glass != null}, carrier=${carrier != null}")
+        if (carrier == null || state.backgroundStyle == null) return false
+        if (!carrier.isShown || carrier.alpha <= 0f || carrier.width <= 0 || carrier.height <= 0) return false
+        val underlayLocation = IntArray(2)
+        val contentLocation = IntArray(2)
+        carrier.getLocationOnScreen(underlayLocation)
+        content.getLocationOnScreen(contentLocation)
+        // MIUI may offset its popup by a few physical pixels around rounded window bounds.
+        val tolerance = (4f * content.resources.displayMetrics.density).toInt()
+        val covered = contentLocation[0] >= underlayLocation[0] - tolerance &&
+            contentLocation[1] >= underlayLocation[1] - tolerance &&
+            contentLocation[0] + content.width <= underlayLocation[0] + carrier.width + tolerance &&
+            contentLocation[1] + content.height <= underlayLocation[1] + carrier.height + tolerance
+        Log.i("MIUI underlay bounds: carrier=${underlayLocation.toList()}/${carrier.width}x${carrier.height}, content=${contentLocation.toList()}/${content.width}x${content.height}, covered=$covered")
+        return covered
+    }
     private val overlayStateLock = Any()
     private val overlayRootsByContainer =
         WeakHashMap<ViewGroup, MutableMap<View, Boolean>>()
@@ -168,6 +192,7 @@ internal object WeTypeWindowHooks {
             weTypeWindowStates.values.toList()
         }
         val cleaned = runOnMainThreadBlocking {
+            WeTypeNativeClipboardStyle.clear()
             overlayWindowVisible = false
             restoreAllCoveredUnderlays(clearTrackedRoots = true)
             states.forEach { state ->
@@ -311,6 +336,9 @@ internal object WeTypeWindowHooks {
             it.javaClass.name in WETYPE_TRANSPARENT_OVERLAY_CLASS_NAMES
         } ?: return
         ensureExternalOverlayAttachListener(overlayRoot)
+        if (overlayRoot.javaClass.name == "com.tencent.wetype.plugin.hld.keyboard.S15CustomPhraseAndClipboardKeyboard") {
+            WeTypeNativeClipboardStyle.attach(overlayRoot)
+        }
         fun registerWhenAttached(retriesRemaining: Int) {
             val container = findOverlayKeyboardContainer(overlayRoot)
             if (container != null) {

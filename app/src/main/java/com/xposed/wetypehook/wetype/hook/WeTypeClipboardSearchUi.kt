@@ -98,7 +98,12 @@ internal object WeTypeClipboardSearchUi {
             val panel = panelClass.enumConstants?.single { (it as Enum<*>).name == "CustomPhraseAndClipboard" }
                 ?: error("Missing CustomPhraseAndClipboard panel")
             val navigation = n.declaredMethods.firstOrNull {
-                (it.name == "n3" || it.name == "p3") && it.parameterTypes.size == 2 &&
+                (it.name == "o3" || it.name == "n3" || it.name == "p3") && it.parameterTypes.size == 2 &&
+                    it.parameterTypes[0] == panelClass &&
+                    it.parameterTypes[1] == android.os.Bundle::class.java &&
+                    it.returnType == Void.TYPE
+            } ?: n.declaredMethods.firstOrNull {
+                it.parameterTypes.size == 2 &&
                     it.parameterTypes[0] == panelClass &&
                     it.parameterTypes[1] == android.os.Bundle::class.java &&
                     it.returnType == Void.TYPE
