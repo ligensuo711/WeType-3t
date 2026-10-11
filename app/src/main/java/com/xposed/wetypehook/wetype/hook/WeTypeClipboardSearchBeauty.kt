@@ -256,7 +256,7 @@ internal object WeTypeClipboardSearchBeauty {
                 layoutParams = FrameLayout.LayoutParams(dp(ctx, 21), dp(ctx, 21), Gravity.CENTER)
                 isClickable = false
                 isFocusable = false
-                setImageDrawable(MagnifierDrawable().apply { tint = accentColor })
+                setImageDrawable(MagnifierDrawable().apply { tintColor = accentColor })
             }
             entry.addView(icon)
             entry.setOnClickListener { v ->
@@ -340,7 +340,7 @@ internal object WeTypeClipboardSearchBeauty {
             }
             val back = ImageView(ctx).apply {
                 layoutParams = LinearLayout.LayoutParams(dp(ctx, 24), dp(ctx, 24))
-                setImageDrawable(BackDrawable().apply { tint = accentColor })
+                setImageDrawable(BackDrawable().apply { tintColor = accentColor })
                 isClickable = true
                 background = ripple(ctx)
                 setOnClickListener { exitSearch(triggerNativeBack = true) }
@@ -767,7 +767,7 @@ internal object WeTypeClipboardSearchBeauty {
     // ---------- 图标 ----------
 
     private abstract class IconDrawable : Drawable() {
-        var tint = Color.BLACK
+        var tintColor = Color.BLACK
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = 2.4f
@@ -788,7 +788,7 @@ internal object WeTypeClipboardSearchBeauty {
 
         protected fun paintFor(): Paint {
             paint.colorFilter = filter
-                ?: if (tint != Color.BLACK) PorterDuffColorFilter(tint, PorterDuff.Mode.SRC_IN) else null
+                ?: if (tintColor != Color.BLACK) PorterDuffColorFilter(tintColor, PorterDuff.Mode.SRC_IN) else null
             return paint
         }
     }
