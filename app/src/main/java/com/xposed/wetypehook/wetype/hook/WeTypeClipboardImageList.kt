@@ -568,8 +568,8 @@ internal object WeTypeClipboardImageList {
     /** 图片下载落盘/DB 变更后由调用方触发一次列表重放。 */
     fun reapplyAll() {
         if (injecting) return
-        if (WeTypeClipboardSearchFilter.isReplaying()) return
-        if (WeTypeClipboardSearchFilter.currentKeywordValue().isNotEmpty()) return
+        if (WeTypeClipboardSearchBeauty.isReplaying()) return
+        if (WeTypeClipboardSearchBeauty.currentKeyword().isNotEmpty()) return
         val targets = synchronized(cacheLock) {
             lastNativeByScrollView.entries.map { it.key to ArrayList(it.value) }
         }
@@ -619,7 +619,7 @@ internal object WeTypeClipboardImageList {
             method.isAccessible = true
             method.hookBefore { param ->
                 try {
-                    if (injecting || WeTypeClipboardSearchFilter.isReplaying()) return@hookBefore
+                    if (injecting || WeTypeClipboardSearchBeauty.isReplaying()) return@hookBefore
                     val raw = param.args.getOrNull(0) as? List<*> ?: return@hookBefore
                     val nativeList = raw.filterNotNull()
                     if (nativeList.isEmpty()) return@hookBefore

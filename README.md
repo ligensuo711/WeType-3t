@@ -24,6 +24,16 @@
 </p>
 </div>
 
+
+> **本 fork（ligensuo711）**：在上游 v1.28.2 基础上，移除了原 S2/S4/S5 搜索实现，
+> 换入 **WeType 美化 1.28.4 `ClipboardSearchHooks` 机制的 Kotlin 复刻**（`WeTypeClipboardSearchBeauty`）：
+> DexKit 定位 `S34ClipboardBombKeyboard` / `S15CustomPhraseAndClipboardKeyboard` → 注入放大镜搜索入口
+> （tag `wetype_clipboard_search_entry`）→ 打开顶栏搜索面板（`| 输入关键词筛选…`）→
+> `getCurrentInputConnection` 包代理截获键盘输入作查询 → 直读宿主 `ime_database` 的
+> `clipboard_record` → 分词 + 拼音（Han→Latin）+ 跨字序列匹配（间隔≤4）+ 高亮 →
+> 点击结果经真 InputConnection 上屏；日志码 LCS-001~017 与美化版对齐。
+> 构建产物见 Actions / Releases，签名密钥在仓库 secrets 中。
+
 ---
 
 ## 功能特性

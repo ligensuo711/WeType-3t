@@ -63,18 +63,11 @@ internal object WeTypeClipboardHooks {
             Log.e("Failed: Installing clipboard image entries: ${it.message}")
             Log.i(it)
         }
-        // Slice 4:剪贴板搜索框 UI 挂载（只挂载不做过滤；独立 try/catch，不影响配额 Hook）。
+        // 剪贴板搜索（WeType 美化 1.28.4 ClipboardSearchHooks 机制复刻；独立 try/catch）。
         runCatching {
-            WeTypeClipboardSearchUi.install(classLoader)
+            WeTypeClipboardSearchBeauty.install(sourceDir, classLoader)
         }.onFailure {
-            Log.e("Failed: Installing clipboard search UI: ${it.message}")
-            Log.i(it)
-        }
-        // Slice 5:剪贴板搜索过滤渲染（防抖+后台搜+高亮；独立 try/catch，不影响配额 Hook）。
-        runCatching {
-            WeTypeClipboardSearchFilter.install(classLoader)
-        }.onFailure {
-            Log.e("Failed: Installing clipboard search filter: ${it.message}")
+            Log.e("Failed: Installing beauty clipboard search: ${it.message}")
             Log.i(it)
         }
     }

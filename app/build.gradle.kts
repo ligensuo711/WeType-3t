@@ -32,8 +32,8 @@ android {
         applicationId = "com.xposed.wetypehook"
         minSdk = 31
         targetSdk = 37
-        versionCode = 38
-        versionName = "1.28.2"
+        versionCode = 41
+        versionName = "1.28.4-clipsearch"
         buildConfigField(
             "String",
             "BUILD_TIME",
