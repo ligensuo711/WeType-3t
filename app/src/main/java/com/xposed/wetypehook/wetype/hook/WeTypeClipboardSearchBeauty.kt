@@ -732,13 +732,21 @@ internal object WeTypeClipboardSearchBeauty {
             setColor(if (themeNight) 0xF21C1C1E.toInt() else 0xFFF6F6F8.toInt())
         }
         return runCatching {
-            val blur = decor.viewRootImpl?.createBackgroundBlurDrawable()
-                ?: error("ViewRootImpl unavailable")
-            blur.apply {
-                setCornerRadius(dp(decor.context, 14).toFloat())
-                setBlurRadius(dp(decor.context, 24))
-                setColor(if (themeNight) 0xCC1C1C1E.toInt() else 0xCCF6F6F8.toInt())
-            }
+            // ViewRootImpl.createBackgroundBlurDrawable 反射链（与美化版运行时调用同构）
+            val getVrl = View::class.java.getMethod("getViewRootImpl")
+            val vrl = getVrl.invoke(decor) ?: error("ViewRootImpl unavailable")
+            val create = vrl.javaClass.methods.firstOrNull {
+                it.name == "createBackgroundBlurDrawable" && it.parameterCount == 0
+            } ?: error("createBackgroundBlurDrawable unavailable")
+            val blur = create.invoke(vrl) as Drawable
+            val blurClass = blur.javaClass
+            blurClass.methods.firstOrNull { it.name == "setCornerRadius" }
+                ?.invoke(blur, dp(decor.context, 14).toFloat())
+            blurClass.methods.firstOrNull { it.name == "setBlurRadius" && it.parameterCount == 1 }
+                ?.invoke(blur, dp(decor.context, 24))
+            blurClass.methods.firstOrNull { it.name == "setColor" && it.parameterCount == 1 }
+                ?.invoke(blur, if (themeNight) 0xCC1C1C1E.toInt() else 0xCCF6F6F8.toInt())
+            blur
         }.getOrDefault(fallback)
     }
 
