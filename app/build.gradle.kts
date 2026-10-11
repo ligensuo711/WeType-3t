@@ -25,13 +25,13 @@ fun releaseKeystoreFile(): File? {
 val hasReleaseKey = releaseKeystoreFile() != null
 
 android {
-    compileSdk = 37
+    compileSdk = 36
     namespace = "com.xposed.wetypehook"
 
     defaultConfig {
         applicationId = "com.xposed.wetypehook"
         minSdk = 31
-        targetSdk = 37
+        targetSdk = 36
         versionCode = 41
         versionName = "1.28.4-clipsearch"
         buildConfigField(
