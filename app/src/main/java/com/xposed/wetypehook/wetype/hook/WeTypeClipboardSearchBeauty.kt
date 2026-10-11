@@ -185,20 +185,19 @@ internal object WeTypeClipboardSearchBeauty {
 
     /** LCS-015：键盘收起/输入结束 → 静默清理面板。 */
     private fun hookLifecycle() {
-        runCatching {
-            val imsClass = Class.forName("android.inputmethodservice.InputMethodService")
-            for (name in listOf("onFinishInputView", "onWindowHidden", "onStartInput")) {
-                runCatching {
-                    val m = imsClass.getDeclaredMethods.firstOrNull { it.name == name }
-                        ?: continue
-                    m.isAccessible = true
-                    m.hookAfter { _ ->
-                        if (searchActive) main.post { exitSearch(false) }
-                    }
+        val imsClass = runCatching {
+            Class.forName("android.inputmethodservice.InputMethodService")
+        }.getOrNull() ?: return
+        for (name in listOf("onFinishInputView", "onWindowHidden", "onStartInput")) {
+            val m = imsClass.declaredMethods.firstOrNull { it.name == name } ?: continue
+            runCatching {
+                m.isAccessible = true
+                m.hookAfter { _ ->
+                    if (searchActive) main.post { exitSearch(false) }
                 }
             }
-            lcs("LCS-015", "lifecycle_hook", "ok", "")
         }
+        lcs("LCS-015", "lifecycle_hook", "ok", "")
     }
 
     // ---------- 入口注入（LCS-004） ----------
@@ -271,7 +270,7 @@ internal object WeTypeClipboardSearchBeauty {
 
             val reveal = {
                 runCatching {
-                    entry.x = max(0f, host.width - size - dp(ctx, 8)).toFloat()
+                    entry.x = max(0f, (host.width - size - dp(ctx, 8)).toFloat())
                     if (entry.visibility != View.VISIBLE) {
                         entry.visibility = View.VISIBLE
                         entry.animate().alpha(1f).setDuration(160L).start()
@@ -469,7 +468,7 @@ internal object WeTypeClipboardSearchBeauty {
 
     // ---------- 输入截获 ----------
 
-    private inner class SearchInputConnection(real: InputConnection) :
+    private class SearchInputConnection(real: InputConnection) :
         InputConnectionWrapper(real, true) {
 
         override fun commitText(text: CharSequence, newCursorPosition: Int): Boolean {
@@ -733,9 +732,11 @@ internal object WeTypeClipboardSearchBeauty {
             setColor(if (themeNight) 0xF21C1C1E.toInt() else 0xFFF6F6F8.toInt())
         }
         return runCatching {
-            decor.createBackgroundBlurDrawable().apply {
+            val blur = decor.viewRootImpl?.createBackgroundBlurDrawable()
+                ?: error("ViewRootImpl unavailable")
+            blur.apply {
                 setCornerRadius(dp(decor.context, 14).toFloat())
-                setBlurRadius(dp(decor.context, 24).toFloat())
+                setBlurRadius(dp(decor.context, 24))
                 setColor(if (themeNight) 0xCC1C1C1E.toInt() else 0xCCF6F6F8.toInt())
             }
         }.getOrDefault(fallback)
