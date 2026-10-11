@@ -36,7 +36,10 @@ jobs:
           [ -x "$SDKM" ] || SDKM="$(command -v sdkmanager)"
           echo "sdkmanager: $SDKM"
           yes | "$SDKM" --licenses > /dev/null || true
-          "$SDKM" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+          # API 37 平台以扩展级命名发布（37.0/37.1/37.2），装 37.0 后软链成 android-37 供 AGP 解析
+          "$SDKM" "platforms;android-37.0" "build-tools;36.0.0" > /dev/null
+          ln -sfn "$ANDROID_HOME/platforms/android-37.0" "$ANDROID_HOME/platforms/android-37"
+          ls "$ANDROID_HOME/platforms/" | tail -5
 
       - name: Grant gradlew exec
         run: chmod +x ./gradlew
