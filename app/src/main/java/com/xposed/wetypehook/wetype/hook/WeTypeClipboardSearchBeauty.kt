@@ -78,6 +78,8 @@ internal object WeTypeClipboardSearchBeauty {
     private const val PANEL_TAG = "wetype_clipboard_keyboard_top_panel"
     private const val ROW_TAG = "wetype_clipboard_row_text"
     private const val TAB_CONTAINER = "TabContainerView"
+    private const val INITIAL_RENDER = 60
+    private const val MAX_RENDER = 96
 
     // ---------- 状态 ----------
     private var installed = false
@@ -270,7 +272,19 @@ internal object WeTypeClipboardSearchBeauty {
 
             val reveal = {
                 runCatching {
-                    entry.x = max(0f, (host.width - size - dp(ctx, 8)).toFloat())
+                    val anchor = findAnchorButton(host, tab, ctx)
+                    if (anchor != null) {
+                        // 锚点按钮（custom_btn/setting）左侧相邻，垂直居中
+                        entry.x = (anchor.x - size - dp(ctx, 4)).coerceAtLeast(dp(ctx, 2).toFloat())
+                        entry.y = anchor.y + (anchor.height - size) / 2f
+                    } else {
+                        // 无锚点：贴 TabContainerView 右侧，垂直居中于 tab 行
+                        entry.x = max(
+                            dp(ctx, 2).toFloat(),
+                            min((tab.right + dp(ctx, 6)).toFloat(), (host.width - size - dp(ctx, 2)).toFloat())
+                        )
+                        entry.y = tab.y + (tab.height - size) / 2f
+                    }
                     if (entry.visibility != View.VISIBLE) {
                         entry.visibility = View.VISIBLE
                         entry.animate().alpha(1f).setDuration(160L).start()
@@ -319,11 +333,6 @@ internal object WeTypeClipboardSearchBeauty {
             val decor = from.rootView as? ViewGroup ?: return
             if (decor.findViewWithTag<View>(PANEL_TAG) != null) return
 
-            val records = ClipboardDb.query(ctx, 0)
-            BeautyClipboardSearch.ensurePinyinIndex(records) {
-                main.post { if (searchActive) scheduleSearch(force = true) }
-            }
-
             val panel = LinearLayout(ctx).apply {
                 tag = PANEL_TAG
                 orientation = LinearLayout.VERTICAL
@@ -343,7 +352,7 @@ internal object WeTypeClipboardSearchBeauty {
                 setImageDrawable(BackDrawable().apply { tintColor = accentColor })
                 isClickable = true
                 background = ripple(ctx)
-                setOnClickListener { exitSearch(triggerNativeBack = true) }
+                setOnClickListener { exitSearch(triggerNativeBack = false) }
             }
             val queryText = TextView(ctx).apply {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -421,8 +430,21 @@ internal object WeTypeClipboardSearchBeauty {
             query.setLength(0)
             composing = ""
             updateQueryDisplay()
-            renderResults(records.map { BeautyClipboardSearch.Hit(it, 0, emptyList()) })
-            lcs("LCS-007", "panel_shown", "ok", "records=${records.size}")
+            // DB 读取与初始渲染全部走后台线程，杜绝主线程卡顿
+            searchExecutor.execute {
+                val records = ClipboardDb.query(ctx, 0)
+                BeautyClipboardSearch.ensurePinyinIndex(records) {
+                    main.post { if (searchActive) scheduleSearch(force = true) }
+                }
+                main.post {
+                    if (!searchActive || panelRef.get() == null) return@post
+                    renderResults(
+                        records.take(INITIAL_RENDER).map { BeautyClipboardSearch.Hit(it, 0, emptyList()) },
+                        records.size
+                    )
+                }
+            }
+            lcs("LCS-007", "panel_shown", "ok", "")
         }.onFailure {
             lcs("LCS-007", "panel_shown", "fail", "reason=${it.message}")
         }
@@ -549,7 +571,7 @@ internal object WeTypeClipboardSearchBeauty {
                 val hits = BeautyClipboardSearch.search(records, q)
                 main.post {
                     if (!searchActive || gen != searchGen.get()) return@post
-                    renderResults(hits)
+                    renderResults(hits.take(MAX_RENDER), hits.size)
                 }
             }
         }, 120L)
@@ -586,10 +608,10 @@ internal object WeTypeClipboardSearchBeauty {
 
     // ---------- 结果渲染 / 提交 ----------
 
-    private fun renderResults(hits: List<BeautyClipboardSearch.Hit>) {
+    private fun renderResults(hits: List<BeautyClipboardSearch.Hit>, total: Int = hits.size) {
         lastHits = hits
+        val ctx = resultsRef.get()?.context ?: return
         val results = resultsRef.get() ?: return
-        val ctx = results.context
         results.removeAllViews()
         if (hits.isEmpty()) {
             results.addView(TextView(ctx).apply {
@@ -604,6 +626,15 @@ internal object WeTypeClipboardSearchBeauty {
         }
         for (hit in hits) {
             results.addView(buildRow(ctx, hit))
+        }
+        if (total > hits.size && query.isEmpty()) {
+            results.addView(TextView(ctx).apply {
+                text = "共 $total 条，输入关键词筛选"
+                textSize = 12f
+                setTextColor(textSecondary())
+                gravity = Gravity.CENTER
+                setPadding(0, dp(ctx, 4), 0, dp(ctx, 6))
+            })
         }
         updateQueryDisplay()
     }
