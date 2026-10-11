@@ -117,8 +117,9 @@ internal object WeTypeClipboardSearchBeauty {
         }
         installed = true
         runCatching {
+            val apkPath = sourceDir ?: error("sourceDir unavailable")
             System.loadLibrary("dexkit")
-            DexKitBridge.create(sourceDir).use { bridge ->
+            DexKitBridge.create(apkPath).use { bridge ->
                 hookClipKeyboards(bridge, classLoader)
             }
         }.onFailure {
